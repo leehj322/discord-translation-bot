@@ -1,0 +1,25 @@
+{
+  "name": "discord-translate-bot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "dev": "tsx src/bot.ts",
+    "register": "tsx src/register-commands.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/bot.js"
+  },
+  "dependencies": {
+    "@google-cloud/translate": "^9.2.1",
+    "discord.js": "^14.15.3",
+    "dotenv": "^16.6.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.23",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}

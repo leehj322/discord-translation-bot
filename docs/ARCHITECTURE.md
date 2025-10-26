@@ -1,0 +1,42 @@
+# 아키텍처 개요
+
+## 모듈 구조
+
+- `src/config/`: 환경 변수 로딩/검증, 포트 등 런타임 설정
+- `src/core/`: 프레임워크/런타임 공통(Discord Client, HTTP Health)
+- `src/handlers/`: 이벤트 핸들러 집합(슬래시 명령, 메시지 처리)
+- `src/features/`: 도메인 기능
+  - `translate/`: 번역 서비스/세션/명령 정의
+  - `usage/`: 사용량 카운터
+- `src/commands.ts`: 모든 feature 명령을 모아 등록 스크립트에서 사용
+- `src/register-commands.ts`: 슬래시 명령 등록(전역/길드 선택)
+- `src/bot.ts`: 엔트리포인트
+
+## 의존 방향
+
+`features` → `core`/`config`는 참조하지 않음. `handlers`가 `features`를 사용, `bot.ts`가 `core`/`handlers`/`config`만 참조.
+
+## 확장 가이드
+
+- 새 기능 추가 시 `src/features/<name>/`에 `commands.ts`, `service.ts`(또는 폴더), 필요 시 `sessions.ts` 추가
+- 슬래시 명령은 `src/commands.ts`에서 export 목록에 합치기
+- 핸들링이 필요하면 `src/handlers/`에 전용 핸들러 추가 또는 기존에 연동
+
+## 자동 번역 세션
+
+- public: 채널 단위(`publicSessions[channelId]`)로 모든 사용자에게 번역 결과를 회신
+- private: (제거됨)
+
+세션 종료: `/auto_stop` 또는 채널 삭제 이벤트 발생 시 자동 정리(`channelDelete`)
+
+## 번역 호출 흐름
+
+1. `messageCreate`에서 public 세션 확인
+2. 메시지 내용에서 한국어/일본어를 간단 감지, 교차 언어로만 번역(기타 언어 무시)
+3. 동일 메시지에 대해 src/tgt 조합별 1회만 `translateText` 호출(중복 제거)
+4. 결과를 채널 reply로 전송
+
+## 사용량 집계
+
+- `incrUsage`로 총합/길드/채널/사용자 단위 카운트 증가
+- `/usage` 명령으로 임베드 UI로 표시
