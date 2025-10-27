@@ -1,3 +1,27 @@
+## Usage Counters Persistence (Supabase)
+
+선택적으로 Supabase를 연결하면 사용량 카운터를 영속화합니다. 필요한 항목:
+
+- 환경변수: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE` (또는 `SUPABASE_ANON_KEY`)
+- 테이블 예시: `usage_counters(id text primary key, kind text, value bigint, updated_at timestamptz default now())`
+- RPC 함수 예시(Postgres):
+
+```sql
+create or replace function usage_increment(p_key text)
+returns void
+language plpgsql
+as $$
+begin
+  insert into usage_counters(id, kind, value)
+  values (p_key, split_part(p_key, ':', 1), 1)
+  on conflict (id)
+  do update set value = usage_counters.value + 1, updated_at = now();
+end;
+$$;
+```
+
+앱은 `src/core/supabase.ts`로 클라이언트를 생성하고, `src/features/usage/usage.ts`에서 메모리 카운터와 함께 fire-and-forget 방식으로 RPC를 호출합니다.
+
 # 아키텍처 개요
 
 ## 모듈 구조

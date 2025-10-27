@@ -13,7 +13,7 @@
     "start": "node dist/bot.js"
   },
   "dependencies": {
-    "@google-cloud/translate": "^9.2.1",
+    "@supabase/supabase-js": "^2.46.1",
     "discord.js": "^14.15.3",
     "dotenv": "^16.6.1"
   },

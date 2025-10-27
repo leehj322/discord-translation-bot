@@ -1,3 +1,5 @@
+import { getSupabase } from "../../core/supabase.js";
+
 type Counters = {
   total: number;
   guild: Map<string, number>;
@@ -14,6 +16,21 @@ let inMemory: Counters = {
 
 let apiCallsTotal = 0;
 
+async function persistIncrement({
+  kind,
+  id,
+}: {
+  kind: "total" | "guild" | "channel" | "user";
+  id?: string;
+}) {
+  const supa = getSupabase();
+  if (!supa) return; // gracefully skip if not configured
+  const table = "usage_counters";
+  // Schema suggestion: id (pk text), kind (text), value (int8), updated_at (timestamptz)
+  const key = kind === "total" ? "total" : `${kind}:${id}`;
+  await supa.rpc("usage_increment", { p_key: key });
+}
+
 export function incrUsage({
   guildId,
   channelId,
@@ -29,6 +46,24 @@ export function incrUsage({
   if (channelId)
     inMemory.channel.set(channelId, (inMemory.channel.get(channelId) || 0) + 1);
   if (userId) inMemory.user.set(userId, (inMemory.user.get(userId) || 0) + 1);
+  // fire-and-forget persistence
+  persistIncrement({ kind: "total" }).catch(() => {});
+  if (guildId) persistIncrement({ kind: "guild", id: guildId }).catch(() => {});
+  if (channelId)
+    persistIncrement({ kind: "channel", id: channelId }).catch(() => {});
+  if (userId) persistIncrement({ kind: "user", id: userId }).catch(() => {});
+}
+
+async function fetchCounter(key: string): Promise<number> {
+  const supa = getSupabase();
+  if (!supa) return 0;
+  const { data, error } = await supa
+    .from("usage_counters")
+    .select("value")
+    .eq("id", key)
+    .maybeSingle();
+  if (error || !data) return 0;
+  return Number(data.value) || 0;
 }
 
 export function getUsageSummary({
@@ -50,5 +85,7 @@ export function getUsageSummary({
 
 export function incrApiCalls(): number {
   apiCallsTotal += 1;
+  // optional: persist a separate metric key
+  persistIncrement({ kind: "total" }).catch(() => {});
   return apiCallsTotal;
 }
