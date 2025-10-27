@@ -2,7 +2,6 @@ import type { Client } from "discord.js";
 import { publicSessions } from "../features/translate/sessions.js";
 import { translateText } from "../features/translate/service.js";
 import { incrUsage } from "../features/usage/usage.js";
-//
 
 export function registerMessageHandler(client: Client): void {
   client.on("messageCreate", async (message) => {

@@ -1,4 +1,3 @@
-// Discord 번역 봇 런타임 - TypeScript
 import { assertConfig, token } from "./config/index.js";
 import { createDiscordClient, onceClientReadyEvent } from "./core/client.js";
 import { registerInteractionHandler } from "./handlers/interactions.js";

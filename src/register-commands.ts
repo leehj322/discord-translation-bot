@@ -1,4 +1,3 @@
-// 슬래시 커맨드 등록 스크립트(글로벌 등록) - TypeScript
 import "dotenv/config";
 import { REST, Routes } from "discord.js";
 import { commandDefs } from "./commands.js";
