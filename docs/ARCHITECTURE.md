@@ -62,5 +62,7 @@ $$;
 
 ## 사용량 집계
 
-- `incrUsage`로 총합/길드/채널/사용자 단위 카운트 증가
-- `/usage` 명령으로 임베드 UI로 표시
+- `incrUsage`로 요청 횟수 총합/길드/채널/사용자 단위 카운트 증가
+- `addCharUsage`로 문자 수 총합/길드/채널/사용자 단위 카운트 증가
+- Supabase 설정 시 RPC `usage_increment`, `usage_add_chars`로 영속화
+- `/usage` 명령으로 임베드 UI 표시(요청 수/문자 수)

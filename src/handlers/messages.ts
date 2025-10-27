@@ -1,7 +1,7 @@
 import type { Client } from "discord.js";
 import { publicSessions } from "../features/translate/sessions.js";
 import { translateText } from "../features/translate/service.js";
-import { incrUsage } from "../features/usage/usage.js";
+import { incrUsage, addCharUsage } from "../features/usage/usage.js";
 
 const registeredClients = new WeakSet<Client>();
 const processedMessageIds = new Set<string>();
@@ -80,6 +80,12 @@ export function registerMessageHandler(client: Client): void {
             content
           );
           incrUsage({ guildId, channelId, userId: message.author.id });
+          addCharUsage({
+            guildId,
+            channelId,
+            userId: message.author.id,
+            chars: content.length,
+          });
           await message.reply({
             content: translated,
             allowedMentions: { parse: [] },

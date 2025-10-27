@@ -116,8 +116,14 @@ export function registerInteractionHandler(client: Client): void {
         .addFields(
           { name: "총 요청 수", value: String(s.total), inline: true },
           {
-            name: "이 채널",
+            name: "이 채널 요청 수",
             value: s.channel != null ? String(s.channel) : "-",
+            inline: true,
+          },
+          { name: "총 문자 수", value: String(s.charsTotal), inline: true },
+          {
+            name: "이 채널 문자 수",
+            value: s.charsChannel != null ? String(s.charsChannel) : "-",
             inline: true,
           }
         )
