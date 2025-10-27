@@ -3,7 +3,12 @@ import { publicSessions } from "../features/translate/sessions.js";
 import { translateText } from "../features/translate/service.js";
 import { incrUsage } from "../features/usage/usage.js";
 
+const registeredClients = new WeakSet<Client>();
+const processedMessageIds = new Set<string>();
+
 export function registerMessageHandler(client: Client): void {
+  if (registeredClients.has(client)) return;
+  registeredClients.add(client);
   client.on("messageCreate", async (message) => {
     try {
       if ((message.author as any).bot || !message.guild || message.system)
@@ -56,6 +61,11 @@ export function registerMessageHandler(client: Client): void {
       const detected = detectLangKoJa(content);
       if (!detected) return; // 영어 등은 번역하지 않음
       const target = detected === "ko" ? "ja" : "ko";
+
+      // 동일 메시지 ID에 대한 중복 응답 방지 (같은 프로세스 내)
+      if (processedMessageIds.has(message.id)) return;
+      processedMessageIds.add(message.id);
+      setTimeout(() => processedMessageIds.delete(message.id), 60_000);
 
       for (const t of targets) {
         try {
