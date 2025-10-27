@@ -59,7 +59,7 @@ export function registerInteractionHandler(client: Client): void {
         enabledBy: cmd.user.id,
       });
       return safeReply(cmd, {
-        content: `자동 번역 활성화: 이 채널의 한국어↔일본어 메시지가 교차 번역됩니다.`,
+        content: `자동 번역 활성화 (ko ↔ jp)`,
       });
     }
 
@@ -83,7 +83,7 @@ export function registerInteractionHandler(client: Client): void {
       }
       if (stopped.length === 0) {
         return safeReply(cmd, {
-          content: "중지할 public 세션이 없습니다.",
+          content: "중지할 번역 세션이 없습니다.",
           ephemeral: true,
         });
       }
