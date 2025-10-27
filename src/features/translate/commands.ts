@@ -3,7 +3,7 @@ import { SlashCommandBuilder, PermissionFlagsBits } from "discord.js";
 export const translateCommandDefs = [
   new SlashCommandBuilder()
     .setName("auto")
-    .setDescription("채널 자동 번역을 활성화합니다 (ko↔jp 자동 감지)."),
+    .setDescription("자동 번역 활성화 (ko↔jp 자동 감지)."),
   new SlashCommandBuilder()
     .setName("stop")
     .setDescription("채널 자동 번역을 해제합니다.")

@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
 import { port } from "../config/index.js";
+import { logger } from "./logger.js";
 
 export function startHealthServer(): void {
   createServer((req, res) => {
@@ -7,6 +8,6 @@ export function startHealthServer(): void {
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
     res.end("ok\n");
   }).listen(port, () => {
-    console.log(`health server listening on :${port}`);
+    logger.info("health server listening", { port });
   });
 }
