@@ -60,6 +60,15 @@ export function registerMessageHandler(client: Client): void {
       for (const t of targets) {
         try {
           const translated = await getTranslatedOnce(detected, target);
+          console.log(
+            "[TranslateReq] guild=%s channel=%s user=%s %s->%s text=%s",
+            guildId,
+            channelId,
+            message.author.id,
+            detected,
+            target,
+            content
+          );
           incrUsage({ guildId, channelId, userId: message.author.id });
           await message.reply({
             content: translated,
