@@ -77,6 +77,10 @@ export const logger = {
   },
 };
 
+export function getLogLevel(): LogLevel {
+  return LOG_LEVEL;
+}
+
 export function serializeError(err: unknown): Record<string, unknown> {
   if (err instanceof Error) {
     return {

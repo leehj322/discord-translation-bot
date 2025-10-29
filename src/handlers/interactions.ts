@@ -222,6 +222,14 @@ export function registerInteractionHandler(client: Client): void {
           });
         }
         const url = cmd.options.getString("url", true);
+        logger.info("music play requested", {
+          feature: "music",
+          guildId: cmd.guildId!,
+          channelId: cmd.channelId!,
+          userId: cmd.user.id,
+          voiceChannelId: vc.id,
+          url,
+        });
         try {
           await enqueueTrack({
             client,

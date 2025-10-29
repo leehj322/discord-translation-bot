@@ -3,7 +3,7 @@ import { createDiscordClient, onceClientReadyEvent } from "./core/client.js";
 import { registerInteractionHandler } from "./handlers/interactions.js";
 import { registerMessageHandler } from "./handlers/messages.js";
 import { startHealthServer } from "./core/http.js";
-import { logger, serializeError } from "./core/logger.js";
+import { logger, serializeError, getLogLevel } from "./core/logger.js";
 
 assertConfig();
 
@@ -20,6 +20,12 @@ process.on("unhandledRejection", (reason) => {
 });
 
 const client = createDiscordClient();
+
+// 부팅 환경 로깅
+logger.info("boot", {
+  node_env: process.env.NODE_ENV || "",
+  log_level: getLogLevel(),
+});
 
 client.once(onceClientReadyEvent, () => {
   logger.info("discord client ready", { user: client.user?.tag });
