@@ -1,4 +1,5 @@
 import type { Client } from "discord.js";
+import { logger } from "../core/logger.js";
 import { publicSessions } from "../features/translate/sessions.js";
 import { translateText } from "../features/translate/service.js";
 import { incrUsage, addCharUsage } from "../features/translate/usage.js";
@@ -83,15 +84,15 @@ export function registerMessageHandler(client: Client): void {
       for (const t of targets) {
         try {
           const translated = await getTranslatedOnce(detected, target);
-          console.log(
-            "[TranslateReq] guild=%s channel=%s user=%s %s->%s text=%s",
+          logger.info("translate request", {
+            feature: "translate",
             guildId,
             channelId,
-            message.author.id,
-            detected,
-            target,
-            content
-          );
+            userId: message.author.id,
+            src: detected,
+            tgt: target,
+            text: content,
+          });
           incrUsage({ guildId, channelId, userId: message.author.id });
           addCharUsage({
             guildId,
@@ -104,11 +105,20 @@ export function registerMessageHandler(client: Client): void {
             allowedMentions: { parse: [] },
           });
         } catch (err) {
-          console.error("translate/post failed", err);
+          logger.error("translate/post failed", {
+            feature: "translate",
+            guildId,
+            channelId,
+            userId: message.author.id,
+            error: err instanceof Error ? err.message : String(err),
+          });
         }
       }
     } catch (e) {
-      console.error("messageCreate error", e);
+      logger.error("messageCreate error", {
+        feature: "translate",
+        error: e instanceof Error ? e.message : String(e),
+      });
     }
   });
 
@@ -123,7 +133,10 @@ export function registerMessageHandler(client: Client): void {
       // public
       if (publicSessions.has(channelId)) publicSessions.delete(channelId);
     } catch (e) {
-      console.error("channelDelete cleanup failed", e);
+      logger.error("channelDelete cleanup failed", {
+        feature: "translate",
+        error: e instanceof Error ? e.message : String(e),
+      });
     }
   });
 }

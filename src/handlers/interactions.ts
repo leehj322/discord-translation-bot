@@ -13,6 +13,7 @@ import {
   clearGuild,
   setMusicClient,
 } from "../features/music/player.js";
+import { logger } from "../core/logger.js";
 
 const registeredClients = new WeakSet<Client>();
 const processedInteractionIds = new Set<string>();
@@ -166,14 +167,28 @@ export function registerInteractionHandler(client: Client): void {
           (await pauseGuild(guildId)) || (await resumeGuild(guildId));
         try {
           await interaction.deferUpdate();
-        } catch {}
+        } catch (e) {
+          logger.warn("button deferUpdate failed", {
+            feature: "music",
+            guildId,
+            button: customId,
+            error: e instanceof Error ? e.message : String(e),
+          });
+        }
         return;
       }
       if (customId === "music:clear") {
         await clearGuild(guildId);
         try {
           await interaction.deferUpdate();
-        } catch {}
+        } catch (e) {
+          logger.warn("button deferUpdate failed", {
+            feature: "music",
+            guildId,
+            button: customId,
+            error: e instanceof Error ? e.message : String(e),
+          });
+        }
         return;
       }
       return;
@@ -207,14 +222,29 @@ export function registerInteractionHandler(client: Client): void {
           });
         }
         const url = cmd.options.getString("url", true);
-        await enqueueTrack({
-          client,
-          guildId: cmd.guildId!,
-          voiceChannelId: vc.id,
-          adapterCreator: vc.guild.voiceAdapterCreator,
-          textChannelId: cmd.channelId!,
-          track: { url, requestedBy: cmd.user.id },
-        });
+        try {
+          await enqueueTrack({
+            client,
+            guildId: cmd.guildId!,
+            voiceChannelId: vc.id,
+            adapterCreator: vc.guild.voiceAdapterCreator,
+            textChannelId: cmd.channelId!,
+            track: { url, requestedBy: cmd.user.id },
+          });
+        } catch (e) {
+          logger.error("enqueueTrack failed", {
+            feature: "music",
+            guildId: cmd.guildId!,
+            channelId: cmd.channelId!,
+            userId: cmd.user.id,
+            url,
+            error: e instanceof Error ? e.message : String(e),
+          });
+          return safeReply(cmd, {
+            content: "재생에 실패했습니다. URL 또는 권한/연결 상태를 확인해 주세요.",
+            ephemeral: true,
+          });
+        }
         return safeReply(cmd, {
           content: `재생목록에 추가: ${url}`,
           ephemeral: true,

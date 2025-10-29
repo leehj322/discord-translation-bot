@@ -33,18 +33,38 @@ function write(
 
 const NODE_ENV = env.NODE_ENV || "development";
 const isDev = NODE_ENV !== "production";
+const LEVEL_ORDER: Record<LogLevel, number> = {
+  debug: 10,
+  info: 20,
+  warn: 30,
+  error: 40,
+};
+const defaultLevel: LogLevel = isDev ? "debug" : "info";
+const envLevelRaw = (env.LOG_LEVEL || "").toLowerCase();
+const LOG_LEVEL: LogLevel =
+  envLevelRaw === "debug" ||
+  envLevelRaw === "info" ||
+  envLevelRaw === "warn" ||
+  envLevelRaw === "error"
+    ? (envLevelRaw as LogLevel)
+    : defaultLevel;
+
+function shouldWrite(level: LogLevel): boolean {
+  return LEVEL_ORDER[level] >= LEVEL_ORDER[LOG_LEVEL];
+}
 
 export const logger = {
   debug(message: string, meta?: Record<string, unknown>): void {
-    if (isDev) write("debug", message, meta);
+    if (shouldWrite("debug")) write("debug", message, meta);
   },
   info(message: string, meta?: Record<string, unknown>): void {
-    write("info", message, meta);
+    if (shouldWrite("info")) write("info", message, meta);
   },
   warn(message: string, meta?: Record<string, unknown>): void {
-    write("warn", message, meta);
+    if (shouldWrite("warn")) write("warn", message, meta);
   },
   error(message: string, meta?: Record<string, unknown> | Error): void {
+    if (!shouldWrite("error")) return;
     if (meta instanceof Error) {
       write("error", message, {
         name: meta.name,

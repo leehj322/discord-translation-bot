@@ -1,4 +1,5 @@
 import type { Client, TextChannel } from "discord.js";
+import { logger } from "../../core/logger.js";
 import {
   joinVoiceChannel,
   createAudioPlayer,
@@ -44,7 +45,14 @@ function getOrCreateState(guildId: string): GuildMusicState {
   guildIdToState.set(guildId, state);
   // 자동 재생 다음 트랙
   player.on(AudioPlayerStatus.Idle, () => {
-    playNext(guildId).catch(() => {});
+    logger.debug("audio player idle, try next", { feature: "music", guildId });
+    playNext(guildId).catch((e) => {
+      logger.error("playNext failed after idle", {
+        feature: "music",
+        guildId,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    });
   });
   return state;
 }
@@ -52,6 +60,12 @@ function getOrCreateState(guildId: string): GuildMusicState {
 async function createResourceFromUrl(url: string) {
   const res = await fetch(url);
   if (!res.ok || !res.body) {
+    logger.error("audio fetch failed", {
+      feature: "music",
+      url,
+      status: res.status,
+      statusText: res.statusText,
+    });
     throw new Error(`Failed to fetch audio: ${res.status} ${res.statusText}`);
   }
   const nodeStream = Readable.fromWeb(res.body as any);
@@ -71,7 +85,15 @@ async function ensureConnection(
     adapterCreator,
     selfDeaf: false,
   });
-  await entersState(conn, VoiceConnectionStatus.Ready, 30_000);
+  await entersState(conn, VoiceConnectionStatus.Ready, 30_000).catch((e) => {
+    logger.error("voice connection not ready", {
+      feature: "music",
+      guildId,
+      voiceChannelId,
+      error: e instanceof Error ? e.message : String(e),
+    });
+    throw e;
+  });
   conn.subscribe(state.player);
   state.connection = conn;
   conn.on(VoiceConnectionStatus.Disconnected, async () => {
@@ -81,6 +103,10 @@ async function ensureConnection(
         entersState(conn, VoiceConnectionStatus.Connecting, 5_000),
       ]);
     } catch {
+      logger.warn("voice disconnected, cleaning up", {
+        feature: "music",
+        guildId,
+      });
       cleanupGuild(guildId);
     }
   });
@@ -106,13 +132,26 @@ async function playNext(guildId: string): Promise<void> {
   if (!next) {
     // 큐가 비었으면 정리까진 하지 않고 대기
     state.isPaused = false;
-    await updatePanel(guildId).catch(() => {});
+    await updatePanel(guildId).catch((e) => {
+      logger.warn("update panel failed (idle)", {
+        feature: "music",
+        guildId,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    });
     return;
   }
   const resource = await createResourceFromUrl(next.url);
   state.player.play(resource);
   state.isPaused = false;
-  await updatePanel(guildId, next).catch(() => {});
+  await updatePanel(guildId, next).catch((e) => {
+    logger.warn("update panel failed (now playing)", {
+      feature: "music",
+      guildId,
+      url: next.url,
+      error: e instanceof Error ? e.message : String(e),
+    });
+  });
 }
 
 export async function enqueueTrack({
@@ -135,9 +174,23 @@ export async function enqueueTrack({
   state.queue.push(track);
   await ensureConnection(guildId, voiceChannelId, adapterCreator);
   if (state.player.state.status === AudioPlayerStatus.Idle) {
-    await playNext(guildId);
+    await playNext(guildId).catch((e) => {
+      logger.error("playNext failed (enqueue)", {
+        feature: "music",
+        guildId,
+        url: track.url,
+        error: e instanceof Error ? e.message : String(e),
+      });
+      throw e;
+    });
   } else {
-    await updatePanel(guildId).catch(() => {});
+    await updatePanel(guildId).catch((e) => {
+      logger.warn("update panel failed (enqueue)", {
+        feature: "music",
+        guildId,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    });
   }
 }
 
@@ -146,7 +199,13 @@ export async function pauseGuild(guildId: string): Promise<boolean> {
   if (!state) return false;
   if (state.isPaused) return true;
   state.isPaused = state.player.pause();
-  await updatePanel(guildId).catch(() => {});
+  await updatePanel(guildId).catch((e) => {
+    logger.warn("update panel failed (pause)", {
+      feature: "music",
+      guildId,
+      error: e instanceof Error ? e.message : String(e),
+    });
+  });
   return state.isPaused;
 }
 
@@ -155,7 +214,13 @@ export async function resumeGuild(guildId: string): Promise<boolean> {
   if (!state) return false;
   const ok = state.player.unpause();
   if (ok) state.isPaused = false;
-  await updatePanel(guildId).catch(() => {});
+  await updatePanel(guildId).catch((e) => {
+    logger.warn("update panel failed (resume)", {
+      feature: "music",
+      guildId,
+      error: e instanceof Error ? e.message : String(e),
+    });
+  });
   return ok;
 }
 
@@ -168,7 +233,13 @@ export async function clearGuild(guildId: string): Promise<void> {
     state.connection?.destroy();
   } catch {}
   state.connection = null;
-  await updatePanel(guildId).catch(() => {});
+  await updatePanel(guildId).catch((e) => {
+    logger.warn("update panel failed (clear)", {
+      feature: "music",
+      guildId,
+      error: e instanceof Error ? e.message : String(e),
+    });
+  });
 }
 
 async function updatePanel(guildId: string, now?: Track): Promise<void> {
@@ -210,7 +281,13 @@ async function updatePanel(guildId: string, now?: Track): Promise<void> {
       const msg = await channel.messages.fetch(state.panelMessageId);
       await msg.edit({ embeds: [embed], components });
       return;
-    } catch {}
+    } catch (e) {
+      logger.warn("panel edit failed, will resend", {
+        feature: "music",
+        guildId,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
   }
   const sent = await channel.send({ embeds: [embed], components });
   state.panelMessageId = sent.id;

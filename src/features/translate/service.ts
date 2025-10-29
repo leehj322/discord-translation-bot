@@ -5,6 +5,7 @@
 // - 단일 텍스트에 대한 동기/비동기 흐름을 단순화합니다.
 //
 import { incrApiCalls } from "./usage.js";
+import { logger } from "../../core/logger.js";
 import { deeplTranslate } from "./deepl.js";
 import { normalizeLangCode } from "./lang.js";
 
@@ -28,13 +29,13 @@ export async function translateText({
 
   const translated = await deeplTranslate({ source: src, target: tgt, text });
   const totalApi = incrApiCalls();
-  console.log(
-    "[DeepL] src=%s tgt=%s text=%s -> translated=%s | api_total=%d",
+  logger.info("deepl translated", {
+    feature: "translate",
     src,
     tgt,
     text,
     translated,
-    totalApi
-  );
+    api_total: totalApi,
+  });
   return translated;
 }
