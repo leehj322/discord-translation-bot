@@ -4,6 +4,7 @@ import {
   joinVoiceChannel,
   createAudioPlayer,
   createAudioResource,
+  demuxProbe,
   AudioPlayer,
   AudioPlayerStatus,
   VoiceConnection,
@@ -58,6 +59,20 @@ function getOrCreateState(guildId: string): GuildMusicState {
 }
 
 async function createResourceFromUrl(url: string) {
+  const isYouTube =
+    /(?:youtube\.com\/(?:watch\?v=|live\/|shorts\/)|youtu\.be\/)/i.test(url);
+  if (isYouTube) {
+    const ytdl = (await import("ytdl-core")).default as any;
+    const ytStream = ytdl(url, {
+      filter: "audioonly",
+      quality: "highestaudio",
+      highWaterMark: 1 << 25,
+      dlChunkSize: 0,
+    });
+    const { stream, type } = await demuxProbe(ytStream as any);
+    return createAudioResource(stream, { inputType: type });
+  }
+
   const res = await fetch(url);
   if (!res.ok || !res.body) {
     logger.error("audio fetch failed", {
@@ -69,7 +84,8 @@ async function createResourceFromUrl(url: string) {
     throw new Error(`Failed to fetch audio: ${res.status} ${res.statusText}`);
   }
   const nodeStream = Readable.fromWeb(res.body as any);
-  return createAudioResource(nodeStream);
+  const { stream, type } = await demuxProbe(nodeStream as any);
+  return createAudioResource(stream, { inputType: type });
 }
 
 async function ensureConnection(

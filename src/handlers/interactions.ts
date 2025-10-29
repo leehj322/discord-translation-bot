@@ -226,12 +226,15 @@ export function registerInteractionHandler(client: Client): void {
           });
         }
         const url = cmd.options.getString("url", true);
-        // 간단 유효성: 직접 오디오 확장자만 허용 (YouTube 등은 미지원)
+        // 직접 오디오 또는 YouTube 허용
         const isDirectAudio = /\.(mp3|ogg|opus|wav|flac|m4a)(\?|#|$)/i.test(
           url
         );
-        if (!isDirectAudio) {
-          logger.warn("non-audio url for music play", {
+        const isYouTube = /(?:youtube\.com\/(?:watch\?v=|live\/|shorts\/)|youtu\.be\/)/i.test(
+          url
+        );
+        if (!isDirectAudio && !isYouTube) {
+          logger.warn("unsupported url for music play", {
             feature: "music",
             guildId: cmd.guildId!,
             channelId: cmd.channelId!,
@@ -240,7 +243,7 @@ export function registerInteractionHandler(client: Client): void {
           });
           return safeReply(cmd, {
             content:
-              "직접 오디오 URL만 지원합니다. mp3/ogg/opus/wav/flac/m4a 형식의 파일 URL을 입력해 주세요.",
+              "직접 오디오 또는 YouTube URL만 지원합니다. mp3/ogg/opus/wav/flac/m4a 또는 유튜브 링크를 입력해 주세요.",
             flags: MessageFlags.Ephemeral,
           });
         }
