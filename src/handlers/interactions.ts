@@ -7,13 +7,7 @@ import {
 } from "discord.js";
 import { publicSessions } from "../features/translate/sessions.js";
 import { getUsageSummary } from "../features/translate/usage.js";
-import {
-  enqueueTrack,
-  pauseGuild,
-  resumeGuild,
-  clearGuild,
-  setMusicClient,
-} from "../features/music/player.js";
+// 음악 기능 제거됨
 import { logger } from "../core/logger.js";
 
 const registeredClients = new WeakSet<Client>();
@@ -160,43 +154,8 @@ async function handleUsageCommand(
 export function registerInteractionHandler(client: Client): void {
   if (registeredClients.has(client)) return;
   registeredClients.add(client);
-  setMusicClient(client);
   client.on("interactionCreate", async (interaction) => {
-    // 버튼 상호작용 처리 (음악 패널용)
-    if (interaction.isButton()) {
-      const { customId } = interaction;
-      const guildId = interaction.guildId!;
-      if (customId === "music:pause") {
-        const toggled =
-          (await pauseGuild(guildId)) || (await resumeGuild(guildId));
-        try {
-          await interaction.deferUpdate();
-        } catch (e) {
-          logger.warn("button deferUpdate failed", {
-            feature: "music",
-            guildId,
-            button: customId,
-            error: e instanceof Error ? e.message : String(e),
-          });
-        }
-        return;
-      }
-      if (customId === "music:clear") {
-        await clearGuild(guildId);
-        try {
-          await interaction.deferUpdate();
-        } catch (e) {
-          logger.warn("button deferUpdate failed", {
-            feature: "music",
-            guildId,
-            button: customId,
-            error: e instanceof Error ? e.message : String(e),
-          });
-        }
-        return;
-      }
-      return;
-    }
+    // 음악 관련 버튼 핸들링 제거됨
 
     if (!interaction.isChatInputCommand()) return;
     if (processedInteractionIds.has(interaction.id)) return;
@@ -214,93 +173,6 @@ export function registerInteractionHandler(client: Client): void {
       return;
     }
 
-    // music 그룹
-    if (commandName === "music") {
-      const sub = cmd.options.getSubcommand();
-      if (sub === "play") {
-        const vc = (cmd.member as any)?.voice?.channel;
-        if (!vc) {
-          return safeReply(cmd, {
-            content: "먼저 음성 채널에 접속해 주세요.",
-            flags: MessageFlags.Ephemeral,
-          });
-        }
-        const url = cmd.options.getString("url", true);
-        // 직접 오디오 또는 YouTube 허용
-        const isDirectAudio = /\.(mp3|ogg|opus|wav|flac|m4a)(\?|#|$)/i.test(
-          url
-        );
-        const isYouTube =
-          /(?:youtube\.com\/(?:watch\?v=|live\/|shorts\/)|youtu\.be\/)/i.test(
-            url
-          );
-        if (!isDirectAudio && !isYouTube) {
-          logger.warn("unsupported url for music play", {
-            feature: "music",
-            guildId: cmd.guildId!,
-            channelId: cmd.channelId!,
-            userId: cmd.user.id,
-            url,
-          });
-          return safeReply(cmd, {
-            content:
-              "직접 오디오 또는 YouTube URL만 지원합니다. mp3/ogg/opus/wav/flac/m4a 또는 유튜브 링크를 입력해 주세요.",
-            flags: MessageFlags.Ephemeral,
-          });
-        }
-        logger.info("music play requested", {
-          feature: "music",
-          guildId: cmd.guildId!,
-          channelId: cmd.channelId!,
-          userId: cmd.user.id,
-          voiceChannelId: vc.id,
-          url,
-        });
-        try {
-          await enqueueTrack({
-            client,
-            guildId: cmd.guildId!,
-            voiceChannelId: vc.id,
-            adapterCreator: vc.guild.voiceAdapterCreator,
-            textChannelId: cmd.channelId!,
-            track: { url, requestedBy: cmd.user.id },
-          });
-        } catch (e) {
-          const errMsg = e instanceof Error ? e.message : String(e);
-          logger.error("enqueueTrack failed", {
-            feature: "music",
-            guildId: cmd.guildId!,
-            channelId: cmd.channelId!,
-            userId: cmd.user.id,
-            url,
-            error: errMsg,
-          });
-          return safeReply(cmd, {
-            content: "재생에 실패했습니다.",
-            flags: MessageFlags.Ephemeral,
-          });
-        }
-        return safeReply(cmd, {
-          content: `재생목록에 추가: ${url}`,
-          flags: MessageFlags.Ephemeral,
-        });
-      }
-      if (sub === "pause") {
-        const ok =
-          (await pauseGuild(cmd.guildId!)) || (await resumeGuild(cmd.guildId!));
-        return safeReply(cmd, {
-          content: ok ? "토글됨" : "변경 없음",
-          flags: MessageFlags.Ephemeral,
-        });
-      }
-      if (sub === "clear") {
-        await clearGuild(cmd.guildId!);
-        return safeReply(cmd, {
-          content: "모든 노래를 중지했습니다.",
-          flags: MessageFlags.Ephemeral,
-        });
-      }
-      return;
-    }
+    // 음악 명령 제거됨
   });
 }
