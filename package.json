@@ -17,7 +17,7 @@
     "@supabase/supabase-js": "^2.46.1",
     "discord.js": "^14.15.3",
     "dotenv": "^16.6.1",
-    "@discordjs/voice": "^0.16.1",
+    "@discordjs/voice": "^0.18.0",
     "opusscript": "^0.0.8",
     "libsodium-wrappers": "^0.7.13"
   },

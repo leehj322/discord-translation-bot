@@ -3,6 +3,7 @@ import {
   EmbedBuilder,
   type Client,
   type ChatInputCommandInteraction,
+  MessageFlags,
 } from "discord.js";
 import { publicSessions } from "../features/translate/sessions.js";
 import { getUsageSummary } from "../features/translate/usage.js";
@@ -51,7 +52,7 @@ async function handleAutoCommand(
   if (!cmd.channel) {
     await safeReply(cmd, {
       content: "채널 컨텍스트가 필요합니다.",
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -62,7 +63,7 @@ async function handleAutoCommand(
   if (!canManage) {
     await safeReply(cmd, {
       content: "자동 번역 활성화는 관리자만 실행할 수 있습니다.",
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -79,7 +80,7 @@ async function handleStopCommand(
   if (!cmd.channel) {
     await safeReply(cmd, {
       content: "채널 컨텍스트가 필요합니다.",
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -96,7 +97,7 @@ async function handleStopCommand(
   if (stopped.length === 0) {
     await safeReply(cmd, {
       content: "중지할 번역 세션이 없습니다.",
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -114,7 +115,10 @@ async function handleUsageCommand(
 ): Promise<void> {
   const member = await cmd.guild!.members.fetch(cmd.user.id);
   if (!member.permissions.has(PermissionFlagsBits.ManageGuild)) {
-    await safeReply(cmd, { content: "권한이 없습니다.", ephemeral: true });
+    await safeReply(cmd, {
+      content: "권한이 없습니다.",
+      flags: MessageFlags.Ephemeral,
+    });
     return;
   }
   const summaryArgs: { guildId?: string; channelId?: string; userId?: string } =
@@ -218,10 +222,28 @@ export function registerInteractionHandler(client: Client): void {
         if (!vc) {
           return safeReply(cmd, {
             content: "먼저 음성 채널에 접속해 주세요.",
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
           });
         }
         const url = cmd.options.getString("url", true);
+        // 간단 유효성: 직접 오디오 확장자만 허용 (YouTube 등은 미지원)
+        const isDirectAudio = /\.(mp3|ogg|opus|wav|flac|m4a)(\?|#|$)/i.test(
+          url
+        );
+        if (!isDirectAudio) {
+          logger.warn("non-audio url for music play", {
+            feature: "music",
+            guildId: cmd.guildId!,
+            channelId: cmd.channelId!,
+            userId: cmd.user.id,
+            url,
+          });
+          return safeReply(cmd, {
+            content:
+              "직접 오디오 URL만 지원합니다. mp3/ogg/opus/wav/flac/m4a 형식의 파일 URL을 입력해 주세요.",
+            flags: MessageFlags.Ephemeral,
+          });
+        }
         logger.info("music play requested", {
           feature: "music",
           guildId: cmd.guildId!,
@@ -250,12 +272,12 @@ export function registerInteractionHandler(client: Client): void {
           });
           return safeReply(cmd, {
             content: "재생에 실패했습니다. URL 또는 권한/연결 상태를 확인해 주세요.",
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
           });
         }
         return safeReply(cmd, {
           content: `재생목록에 추가: ${url}`,
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
       }
       if (sub === "pause") {
@@ -263,14 +285,14 @@ export function registerInteractionHandler(client: Client): void {
           (await pauseGuild(cmd.guildId!)) || (await resumeGuild(cmd.guildId!));
         return safeReply(cmd, {
           content: ok ? "토글됨" : "변경 없음",
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
       }
       if (sub === "clear") {
         await clearGuild(cmd.guildId!);
         return safeReply(cmd, {
           content: "모든 노래를 중지했습니다.",
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
       }
       return;
