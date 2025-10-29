@@ -265,16 +265,19 @@ export function registerInteractionHandler(client: Client): void {
             track: { url, requestedBy: cmd.user.id },
           });
         } catch (e) {
+          const errMsg = e instanceof Error ? e.message : String(e);
           logger.error("enqueueTrack failed", {
             feature: "music",
             guildId: cmd.guildId!,
             channelId: cmd.channelId!,
             userId: cmd.user.id,
             url,
-            error: e instanceof Error ? e.message : String(e),
+            error: errMsg,
           });
+          // 실제 오류 메시지를 포함해 사용자에게 전달 (민감정보 주의)
+          const human = errMsg ? `재생 실패: ${errMsg}` : "재생에 실패했습니다.";
           return safeReply(cmd, {
-            content: "재생에 실패했습니다. URL 또는 권한/연결 상태를 확인해 주세요.",
+            content: human,
             flags: MessageFlags.Ephemeral,
           });
         }

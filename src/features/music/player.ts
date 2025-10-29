@@ -92,9 +92,8 @@ async function createResourceFromUrl(url: string) {
   if (isYouTube) {
     let ytdlMod: any;
     try {
-      // 우선 유지보수 포크 시도 (eval로 TS 모듈 해석 회피)
-      // eslint-disable-next-line no-eval
-      ytdlMod = await (eval("import('@distube/ytdl-core')") as Promise<any>);
+      // 우선 유지보수 포크 시도
+      ytdlMod = await import("@distube/ytdl-core");
     } catch {
       // 미설치 시 기존 모듈로 폴백
       ytdlMod = await import("ytdl-core");
