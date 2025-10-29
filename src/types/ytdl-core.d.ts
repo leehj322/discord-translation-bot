@@ -30,4 +30,3 @@ declare module "ytdl-core" {
     options?: YTDLDownloadOptions
   ): Readable;
 }
-
