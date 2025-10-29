@@ -4,6 +4,7 @@ import { registerInteractionHandler } from "./handlers/interactions.js";
 import { registerMessageHandler } from "./handlers/messages.js";
 import { startHealthServer } from "./core/http.js";
 import { logger, serializeError, getLogLevel } from "./core/logger.js";
+import { generateDependencyReport } from "@discordjs/voice";
 
 assertConfig();
 
@@ -26,6 +27,8 @@ logger.info("boot", {
   node_env: process.env.NODE_ENV || "",
   log_level: getLogLevel(),
 });
+
+logger.info("voice dependencies", { report: generateDependencyReport() });
 
 client.once(onceClientReadyEvent, () => {
   logger.info("discord client ready", { user: client.user?.tag });
