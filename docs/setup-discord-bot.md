@@ -17,9 +17,9 @@
 1. OAuth2 → URL Generator
 2. Scopes: `bot`, `applications.commands`
 3. Bot Permissions:
-   - Send Messages, Read Message History
 
-- (선택) Create Private Threads, Send Messages in Threads — 현재 버전에서는 private 기능이 제거되어 불필요
+   - View Channels, Send Messages, Read Message History, Embed Links
+   - Voice: Connect, Speak
 
 4. 생성된 URL로 길드(서버)에 봇 초대
 
