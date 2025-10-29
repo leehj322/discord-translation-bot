@@ -86,10 +86,59 @@ function extractYouTubeId(input: string): string | null {
   return null;
 }
 
+async function getPipedAudioUrl(videoId: string): Promise<string | null> {
+  const instances = [
+    "https://piped.video",
+    "https://piped.syncpundit.io",
+    "https://piped.projectsegfau.lt",
+  ];
+  for (const base of instances) {
+    try {
+      const res = await fetch(`${base}/api/v1/streams/${videoId}`);
+      if (!res.ok) continue;
+      const json: any = await res.json();
+      const streams: Array<any> = json?.audioStreams || [];
+      if (!Array.isArray(streams) || streams.length === 0) continue;
+      // opus 우선, 없으면 첫번째
+      const opus = streams.find((s: any) =>
+        /opus/i.test(String(s?.codec || s?.mimeType || ""))
+      );
+      const chosen = opus || streams[0];
+      const streamUrl: string | undefined = chosen?.url;
+      if (streamUrl) return streamUrl;
+    } catch {}
+  }
+  return null;
+}
+
 async function createResourceFromUrl(url: string) {
   const isYouTube =
     /(?:youtube\.com\/(?:watch\?v=|live\/|shorts\/)|youtu\.be\/)/i.test(url);
   if (isYouTube) {
+    // 1) Piped API로 스트림 URL 시도 (ytdl 없이)
+    const vid = extractYouTubeId(url);
+    if (vid) {
+      const pipedUrl = await getPipedAudioUrl(vid).catch(() => null);
+      if (pipedUrl) {
+        const res = await fetch(pipedUrl);
+        if (!res.ok || !res.body) {
+          logger.error("piped audio fetch failed", {
+            feature: "music",
+            url: pipedUrl,
+            status: res.status,
+            statusText: res.statusText,
+          });
+          throw new Error(
+            `Failed to fetch piped audio: ${res.status} ${res.statusText}`
+          );
+        }
+        const nodeStream = Readable.fromWeb(res.body as any);
+        const { stream, type } = await demuxProbe(nodeStream as any);
+        return createAudioResource(stream, { inputType: type });
+      }
+    }
+
+    // 2) 폴백: ytdl 계열로 처리
     let ytdlMod: any;
     try {
       // 우선 유지보수 포크 시도
@@ -101,8 +150,8 @@ async function createResourceFromUrl(url: string) {
     const ytdl = ytdlMod.default || ytdlMod;
 
     // URL 정규화: 변형 링크를 watch?v= 형태로 변환
-    const vid = extractYouTubeId(url) || (ytdlMod.getURLVideoID?.(url) ?? null);
-    const playUrl = vid ? `https://www.youtube.com/watch?v=${vid}` : url;
+    const yVid = vid || (ytdlMod.getURLVideoID?.(url) ?? null);
+    const playUrl = yVid ? `https://www.youtube.com/watch?v=${yVid}` : url;
 
     const headers: Record<string, string> = {
       "User-Agent":
