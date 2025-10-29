@@ -14,6 +14,7 @@ const rest = new REST({ version: "10" }).setToken(token);
 
 async function main() {
   try {
+    // 1) 길드 명령 제거 (guildId가 설정된 경우)
     if (guildId) {
       console.log(
         `Clearing application (guild) commands for guild=${guildId}...`
@@ -23,10 +24,15 @@ async function main() {
       });
       console.log("Successfully cleared application (guild) commands.");
     } else {
-      console.log("Clearing application (global) commands...");
-      await rest.put(Routes.applicationCommands(clientId), { body: [] });
-      console.log("Successfully cleared application (global) commands.");
+      console.log(
+        "DISCORD_GUILD_ID not set; skipping guild command clear (global will still be cleared)."
+      );
     }
+
+    // 2) 전역 명령 제거 (항상 수행)
+    console.log("Clearing application (global) commands...");
+    await rest.put(Routes.applicationCommands(clientId), { body: [] });
+    console.log("Successfully cleared application (global) commands.");
   } catch (error) {
     console.error(error);
     process.exit(1);
