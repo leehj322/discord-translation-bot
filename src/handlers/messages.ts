@@ -6,6 +6,11 @@ import { incrUsage, addCharUsage } from "../features/translate/usage.js";
 const registeredClients = new WeakSet<Client>();
 const processedMessageIds = new Set<string>();
 
+/**
+ * Guild 텍스트 메시지를 대상으로 자동 번역을 수행하는 메시지 핸들러를 등록합니다.
+ * - 채널 단위 세션(publicSessions)에 의해 활성화 여부를 판단합니다.
+ * - 동일 메시지에 대한 중복 번역/응답을 방지합니다.
+ */
 export function registerMessageHandler(client: Client): void {
   if (registeredClients.has(client)) return;
   registeredClients.add(client);
@@ -28,6 +33,9 @@ export function registerMessageHandler(client: Client): void {
 
       // 중복 번역 방지: 동일 메시지에 대해 src/tgt 조합별 1회만 호출
       const requestedPairs = new Map<string, Promise<string>>();
+      /**
+       * 동일 메시지 컨텍스트에서 동일한 src/tgt 요청은 1회만 DeepL 호출하도록 보장합니다.
+       */
       async function getTranslatedOnce(
         src: string,
         tgt: string
@@ -43,6 +51,11 @@ export function registerMessageHandler(client: Client): void {
       }
 
       // ko↔ja 외 언어는 번역하지 않음: 간단 감지(한글/가나/한자 유무)
+      /**
+       * 간단한 문자 집합 검사를 통해 한국어/일본어를 감지합니다.
+       * - 한국어: 한글 범위
+       * - 일본어: 히라가나/가타카나/한자 범위
+       */
       function detectLangKoJa(text: string): "ko" | "ja" | null {
         // 한글: 자모(1100-11FF), 호환 자모(3130-318F), 완성형(AC00-D7A3)
         const hasHangul = /[\u1100-\u11ff\u3130-\u318f\uac00-\ud7a3]/u.test(
@@ -100,6 +113,9 @@ export function registerMessageHandler(client: Client): void {
   });
 
   // 채널 삭제 시 세션 정리
+  /**
+   * 채널 또는 스레드가 삭제될 때, 해당 채널에 설정된 자동 번역 세션을 정리합니다.
+   */
   client.on("channelDelete", async (channel: any) => {
     try {
       const channelId: string | undefined = channel?.id;
