@@ -230,9 +230,10 @@ export function registerInteractionHandler(client: Client): void {
         const isDirectAudio = /\.(mp3|ogg|opus|wav|flac|m4a)(\?|#|$)/i.test(
           url
         );
-        const isYouTube = /(?:youtube\.com\/(?:watch\?v=|live\/|shorts\/)|youtu\.be\/)/i.test(
-          url
-        );
+        const isYouTube =
+          /(?:youtube\.com\/(?:watch\?v=|live\/|shorts\/)|youtu\.be\/)/i.test(
+            url
+          );
         if (!isDirectAudio && !isYouTube) {
           logger.warn("unsupported url for music play", {
             feature: "music",
@@ -274,10 +275,8 @@ export function registerInteractionHandler(client: Client): void {
             url,
             error: errMsg,
           });
-          // 실제 오류 메시지를 포함해 사용자에게 전달 (민감정보 주의)
-          const human = errMsg ? `재생 실패: ${errMsg}` : "재생에 실패했습니다.";
           return safeReply(cmd, {
-            content: human,
+            content: "재생에 실패했습니다.",
             flags: MessageFlags.Ephemeral,
           });
         }
