@@ -6,6 +6,13 @@ import {
 } from "discord.js";
 import { publicSessions } from "../features/translate/sessions.js";
 import { getUsageSummary } from "../features/translate/usage.js";
+import {
+  enqueueTrack,
+  pauseGuild,
+  resumeGuild,
+  clearGuild,
+  setMusicClient,
+} from "../features/music/player.js";
 
 const registeredClients = new WeakSet<Client>();
 const processedInteractionIds = new Set<string>();
@@ -148,7 +155,30 @@ async function handleUsageCommand(
 export function registerInteractionHandler(client: Client): void {
   if (registeredClients.has(client)) return;
   registeredClients.add(client);
+  setMusicClient(client);
   client.on("interactionCreate", async (interaction) => {
+    // 버튼 상호작용 처리 (음악 패널용)
+    if (interaction.isButton()) {
+      const { customId } = interaction;
+      const guildId = interaction.guildId!;
+      if (customId === "music:pause") {
+        const toggled =
+          (await pauseGuild(guildId)) || (await resumeGuild(guildId));
+        try {
+          await interaction.deferUpdate();
+        } catch {}
+        return;
+      }
+      if (customId === "music:clear") {
+        await clearGuild(guildId);
+        try {
+          await interaction.deferUpdate();
+        } catch {}
+        return;
+      }
+      return;
+    }
+
     if (!interaction.isChatInputCommand()) return;
     if (processedInteractionIds.has(interaction.id)) return;
     processedInteractionIds.add(interaction.id);
@@ -156,8 +186,56 @@ export function registerInteractionHandler(client: Client): void {
     const cmd: ChatInputCommandInteraction = interaction;
     const { commandName } = cmd;
 
-    if (commandName === "auto") return handleAutoCommand(cmd);
-    if (commandName === "stop") return handleStopCommand(cmd);
-    if (commandName === "usage") return handleUsageCommand(cmd);
+    // translate 그룹
+    if (commandName === "translate") {
+      const sub = cmd.options.getSubcommand();
+      if (sub === "auto") return handleAutoCommand(cmd);
+      if (sub === "stop") return handleStopCommand(cmd);
+      if (sub === "usage") return handleUsageCommand(cmd);
+      return;
+    }
+
+    // music 그룹
+    if (commandName === "music") {
+      const sub = cmd.options.getSubcommand();
+      if (sub === "play") {
+        const vc = (cmd.member as any)?.voice?.channel;
+        if (!vc) {
+          return safeReply(cmd, {
+            content: "먼저 음성 채널에 접속해 주세요.",
+            ephemeral: true,
+          });
+        }
+        const url = cmd.options.getString("url", true);
+        await enqueueTrack({
+          client,
+          guildId: cmd.guildId!,
+          voiceChannelId: vc.id,
+          adapterCreator: vc.guild.voiceAdapterCreator,
+          textChannelId: cmd.channelId!,
+          track: { url, requestedBy: cmd.user.id },
+        });
+        return safeReply(cmd, {
+          content: `재생목록에 추가: ${url}`,
+          ephemeral: true,
+        });
+      }
+      if (sub === "pause") {
+        const ok =
+          (await pauseGuild(cmd.guildId!)) || (await resumeGuild(cmd.guildId!));
+        return safeReply(cmd, {
+          content: ok ? "토글됨" : "변경 없음",
+          ephemeral: true,
+        });
+      }
+      if (sub === "clear") {
+        await clearGuild(cmd.guildId!);
+        return safeReply(cmd, {
+          content: "모든 노래를 중지했습니다.",
+          ephemeral: true,
+        });
+      }
+      return;
+    }
   });
 }
