@@ -2,7 +2,11 @@ import type { Client } from "discord.js";
 import { logger } from "../core/logger.js";
 import { publicSessions } from "../features/translate/sessions.js";
 import { translateText } from "../features/translate/service.js";
-import { incrUsage, addCharUsage } from "../features/translate/usage.js";
+import {
+  incrUsage,
+  addCharUsage,
+  recordUsageEvent,
+} from "../features/translate/usage.js";
 
 const registeredClients = new WeakSet<Client>();
 const processedMessageIds = new Set<string>();
@@ -100,6 +104,17 @@ export function registerMessageHandler(client: Client): void {
             userId: message.author.id,
             chars: content.length,
           });
+          // 새 테이블에 이벤트 기록 (translation_usage)
+          recordUsageEvent({
+            guildId,
+            channelId,
+            userId: message.author.id,
+            userNickname:
+              (message.member && (message.member as any).nickname) ||
+              (message.author as any).globalName ||
+              message.author.username,
+            charCount: content.length,
+          }).catch(() => {});
           await message.reply({
             content: translated,
             allowedMentions: { parse: [] },

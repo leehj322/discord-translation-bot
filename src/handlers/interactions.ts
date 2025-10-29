@@ -127,7 +127,7 @@ async function handleUsageCommand(
     };
   if (cmd.guild) summaryArgs.guildId = cmd.guild.id;
   if (cmd.channel) summaryArgs.channelId = cmd.channel.id;
-  const s = getUsageSummary(summaryArgs);
+  const s = await getUsageSummary(summaryArgs);
 
   const embed = new EmbedBuilder()
     .setTitle("번역 사용량 요약")

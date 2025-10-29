@@ -1,4 +1,5 @@
 import { getSupabase } from "../../core/supabase.js";
+import { logger } from "../../core/logger.js";
 
 type Counters = {
   total: number;
@@ -38,7 +39,6 @@ async function persistIncrement({
 }) {
   const supa = getSupabase();
   if (!supa) return; // gracefully skip if not configured
-  const table = "usage_counters";
   // Schema suggestion: id (pk text), kind (text), value (int8), updated_at (timestamptz)
   const key = kind === "total" ? "total" : `${kind}:${id}`;
   await supa.rpc("usage_increment", { p_key: key });
@@ -144,28 +144,44 @@ export function addCharUsage({
 }
 
 /**
- * 특정 키의 저장된 카운터 값을 Supabase에서 조회합니다.
- * 구성에 Supabase가 없거나 조회 실패 시 0을 반환합니다.
- * @param key "total" 또는 `${dimension}:${id}` 형태의 키
- * @returns 조회된 카운트 값(없으면 0)
+ * 번역 이벤트 1건을 Supabase 테이블(translate_usage)에 기록합니다.
  */
-async function fetchCounter(key: string): Promise<number> {
+export async function recordUsageEvent({
+  guildId,
+  channelId,
+  userId,
+  userNickname,
+  charCount,
+}: {
+  guildId?: string;
+  channelId?: string;
+  userId?: string;
+  userNickname?: string;
+  charCount: number;
+}): Promise<void> {
   const supa = getSupabase();
-  if (!supa) return 0;
-  const { data, error } = await supa
-    .from("usage_counters")
-    .select("value")
-    .eq("id", key)
-    .maybeSingle();
-  if (error || !data) return 0;
-  return Number(data.value) || 0;
+  if (!supa) return;
+  const { error } = await supa.from("translation_usage").insert({
+    timeStamp: new Date().toISOString(),
+    charCount: charCount,
+    guildId: guildId ?? null,
+    channelId: channelId ?? null,
+    userId: userId ?? null,
+    userNickname: userNickname ?? null,
+  } as any);
+  if (error) {
+    logger.error("recordUsageEvent insert failed", {
+      feature: "translate",
+      error: error.message,
+    });
+  }
 }
 
 /**
  * 현재 프로세스의 인메모리 카운터 스냅샷을 반환합니다.
  * 필요 시 DB 기반 합산으로 확장할 수 있습니다.
  */
-export function getUsageSummary({
+export async function getUsageSummary({
   guildId,
   channelId,
   userId,
@@ -173,19 +189,86 @@ export function getUsageSummary({
   guildId?: string;
   channelId?: string;
   userId?: string;
-}) {
-  return {
-    total: inMemory.total,
-    guild: guildId ? inMemory.guild.get(guildId) || 0 : undefined,
-    channel: channelId ? inMemory.channel.get(channelId) || 0 : undefined,
-    user: userId ? inMemory.user.get(userId) || 0 : undefined,
-    charsTotal: inMemory.charsTotal,
-    charsGuild: guildId ? inMemory.charsGuild.get(guildId) || 0 : undefined,
-    charsChannel: channelId
-      ? inMemory.charsChannel.get(channelId) || 0
-      : undefined,
-    charsUser: userId ? inMemory.charsUser.get(userId) || 0 : undefined,
-  };
+}): Promise<{
+  total: number;
+  guild?: number;
+  channel?: number;
+  user?: number;
+  charsTotal: number;
+  charsGuild?: number;
+  charsChannel?: number;
+  charsUser?: number;
+}> {
+  const supa = getSupabase();
+  if (!supa) {
+    const result: {
+      total: number;
+      guild?: number;
+      channel?: number;
+      user?: number;
+      charsTotal: number;
+      charsGuild?: number;
+      charsChannel?: number;
+      charsUser?: number;
+    } = {
+      total: inMemory.total,
+      charsTotal: inMemory.charsTotal,
+    };
+    if (guildId) {
+      result.guild = inMemory.guild.get(guildId) || 0;
+      result.charsGuild = inMemory.charsGuild.get(guildId) || 0;
+    }
+    if (channelId) {
+      result.channel = inMemory.channel.get(channelId) || 0;
+      result.charsChannel = inMemory.charsChannel.get(channelId) || 0;
+    }
+    if (userId) {
+      result.user = inMemory.user.get(userId) || 0;
+      result.charsUser = inMemory.charsUser.get(userId) || 0;
+    }
+    return result;
+  }
+
+  const db = supa!;
+  const totalQ = db
+    .from("translation_usage")
+    .select("charCount", { count: "exact", head: false });
+  const { data: totalRows, count: totalCount, error: totalErr } = await totalQ;
+  const charsTotal =
+    totalRows?.reduce((s: number, r: any) => s + Number(r.charCount || 0), 0) ||
+    0;
+  if (totalErr)
+    logger.warn("getUsageSummary total error", { error: totalErr.message });
+
+  async function countAndSum(where: Record<string, string>) {
+    const { data, count, error } = await db
+      .from("translation_usage")
+      .select("charCount", { count: "exact", head: false })
+      .match(where);
+    const sum =
+      data?.reduce((s: number, r: any) => s + Number(r.charCount || 0), 0) || 0;
+    if (error)
+      logger.warn("getUsageSummary dim error", { where, error: error.message });
+    return { count: count || 0, sum };
+  }
+
+  const result: any = { total: totalCount || 0, charsTotal };
+  if (guildId) {
+    const g = await countAndSum({ guildId: guildId });
+    result.guild = g.count;
+    result.charsGuild = g.sum;
+  }
+  if (channelId) {
+    const c = await countAndSum({ channelId: channelId });
+    result.channel = c.count;
+    result.charsChannel = c.sum;
+  }
+  if (userId) {
+    const u = await countAndSum({ userId: userId });
+    result.user = u.count;
+    result.charsUser = u.sum;
+  }
+  return result;
 }
 
 /**
