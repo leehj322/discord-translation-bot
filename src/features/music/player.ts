@@ -62,15 +62,46 @@ async function createResourceFromUrl(url: string) {
   const isYouTube =
     /(?:youtube\.com\/(?:watch\?v=|live\/|shorts\/)|youtu\.be\/)/i.test(url);
   if (isYouTube) {
-    const ytdl = (await import("ytdl-core")).default as any;
-    const ytStream = ytdl(url, {
+    const ytdlMod: any = await import("ytdl-core");
+    const ytdl = ytdlMod.default || ytdlMod;
+    let playUrl = url;
+    try {
+      if (ytdlMod.validateURL?.(url)) {
+        const id = ytdlMod.getURLVideoID(url);
+        playUrl = `https://www.youtube.com/watch?v=${id}`;
+      }
+    } catch {}
+    const ytStream = ytdl(playUrl, {
       filter: "audioonly",
       quality: "highestaudio",
       highWaterMark: 1 << 25,
       dlChunkSize: 0,
+      requestOptions: {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0 Safari/537.36",
+          "Accept-Language": "en-US,en;q=0.9",
+        },
+      },
     });
-    const { stream, type } = await demuxProbe(ytStream as any);
-    return createAudioResource(stream, { inputType: type });
+    ytStream.on("error", (e: any) => {
+      logger.error("ytdl stream error", {
+        feature: "music",
+        url: playUrl,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    });
+    try {
+      const { stream, type } = await demuxProbe(ytStream as any);
+      return createAudioResource(stream, { inputType: type });
+    } catch (e: any) {
+      logger.error("demuxProbe failed for youtube", {
+        feature: "music",
+        url: playUrl,
+        error: e instanceof Error ? e.message : String(e),
+      });
+      throw e;
+    }
   }
 
   const res = await fetch(url);
