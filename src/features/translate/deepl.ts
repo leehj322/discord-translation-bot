@@ -1,3 +1,8 @@
+// DeepL API 클라이언트 모듈
+// - 언어 코드를 정규화한 뒤 DeepL v2 /translate 엔드포인트를 호출해 단문 번역을 수행합니다.
+// - 환경변수: DEEPL_AUTH_KEY(필수), DEEPL_API_BASE(선택: free/pro 엔드포인트 선택)
+// - 오류 시 HTTP 응답 본문을 포함하여 예외를 발생시킵니다.
+//
 import { normalizeLangCode } from "./lang.js";
 
 export interface DeepLParams {

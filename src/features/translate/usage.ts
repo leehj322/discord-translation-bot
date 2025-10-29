@@ -24,6 +24,11 @@ let inMemory: Counters = {
 
 let apiCallsTotal = 0;
 
+/**
+ * 증가 카운터를 영속 저장(RPC)합니다. 구성에 Supabase가 없으면 건너뜁니다.
+ * @param params.kind 합산 차원("total" | "guild" | "channel" | "user")
+ * @param params.id   차원이 guild/channel/user일 때의 식별자
+ */
 async function persistIncrement({
   kind,
   id,
@@ -39,6 +44,12 @@ async function persistIncrement({
   await supa.rpc("usage_increment", { p_key: key });
 }
 
+/**
+ * 문자 수 증가를 영속 저장(RPC)합니다. 구성에 Supabase가 없으면 건너뜁니다.
+ * @param params.kind 합산 차원("total" | "guild" | "channel" | "user")
+ * @param params.id   차원이 guild/channel/user일 때의 식별자
+ * @param params.delta 추가할 문자 수(양수만 처리)
+ */
 async function persistCharsIncrement({
   kind,
   id,
@@ -55,6 +66,10 @@ async function persistCharsIncrement({
   await supa.rpc("usage_add_chars", { p_key: key, p_delta: delta });
 }
 
+/**
+ * 번역 요청 수 카운터를 메모리 및 DB(RPC)에 증가시킵니다.
+ * 각 차원(total/guild/channel/user)에 대해 독립적으로 증가합니다.
+ */
 export function incrUsage({
   guildId,
   channelId,
@@ -78,6 +93,10 @@ export function incrUsage({
   if (userId) persistIncrement({ kind: "user", id: userId }).catch(() => {});
 }
 
+/**
+ * 번역 텍스트 길이(문자 수)를 메모리 및 DB(RPC)에 누적합니다.
+ * @param chars 누적할 문자 수(양수여야 함)
+ */
 export function addCharUsage({
   guildId,
   channelId,
@@ -124,6 +143,12 @@ export function addCharUsage({
     );
 }
 
+/**
+ * 특정 키의 저장된 카운터 값을 Supabase에서 조회합니다.
+ * 구성에 Supabase가 없거나 조회 실패 시 0을 반환합니다.
+ * @param key "total" 또는 `${dimension}:${id}` 형태의 키
+ * @returns 조회된 카운트 값(없으면 0)
+ */
 async function fetchCounter(key: string): Promise<number> {
   const supa = getSupabase();
   if (!supa) return 0;
@@ -136,6 +161,10 @@ async function fetchCounter(key: string): Promise<number> {
   return Number(data.value) || 0;
 }
 
+/**
+ * 현재 프로세스의 인메모리 카운터 스냅샷을 반환합니다.
+ * 필요 시 DB 기반 합산으로 확장할 수 있습니다.
+ */
 export function getUsageSummary({
   guildId,
   channelId,
@@ -159,6 +188,10 @@ export function getUsageSummary({
   };
 }
 
+/**
+ * 번역 API 호출 횟수를 증가시키고, 필요 시 total 카운터를 영속 저장합니다.
+ * @returns 증가된 누적 API 호출 횟수
+ */
 export function incrApiCalls(): number {
   apiCallsTotal += 1;
   // optional: persist a separate metric key

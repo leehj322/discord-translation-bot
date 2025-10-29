@@ -5,7 +5,7 @@ import {
   type ChatInputCommandInteraction,
 } from "discord.js";
 import { publicSessions } from "../features/translate/sessions.js";
-import { getUsageSummary } from "../features/usage/usage.js";
+import { getUsageSummary } from "../features/translate/usage.js";
 
 const registeredClients = new WeakSet<Client>();
 const processedInteractionIds = new Set<string>();

@@ -1,7 +1,7 @@
 import type { Client } from "discord.js";
 import { publicSessions } from "../features/translate/sessions.js";
 import { translateText } from "../features/translate/service.js";
-import { incrUsage, addCharUsage } from "../features/usage/usage.js";
+import { incrUsage, addCharUsage } from "../features/translate/usage.js";
 
 const registeredClients = new WeakSet<Client>();
 const processedMessageIds = new Set<string>();

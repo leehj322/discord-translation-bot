@@ -1,4 +1,10 @@
-import { incrApiCalls } from "../usage/usage.js";
+// 번역 서비스 계층
+// - 입력 언어 코드 검증 및 정규화
+// - DeepL 클라이언트 호출(deeplTranslate)
+// - 사용량 카운팅(incrApiCalls) 기록
+// - 단일 텍스트에 대한 동기/비동기 흐름을 단순화합니다.
+//
+import { incrApiCalls } from "./usage.js";
 import { deeplTranslate } from "./deepl.js";
 import { normalizeLangCode } from "./lang.js";
 

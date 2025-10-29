@@ -1,3 +1,8 @@
+// 번역 관련 슬래시 커맨드 정의
+// - /auto: 자동 번역 활성화
+// - /stop: 자동 번역 해제
+// - /usage: 번역 API 요청/문자 수 요약 표시(관리자 권한 필요)
+//
 import { SlashCommandBuilder, PermissionFlagsBits } from "discord.js";
 
 export const translateCommandDefs = [
