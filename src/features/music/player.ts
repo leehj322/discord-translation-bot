@@ -58,31 +58,66 @@ function getOrCreateState(guildId: string): GuildMusicState {
   return state;
 }
 
+function extractYouTubeId(input: string): string | null {
+  try {
+    const u = new URL(input);
+    const host = u.hostname.replace(/^www\./, "");
+    if (host === "youtu.be") {
+      const id = u.pathname.split("/").filter(Boolean)[0];
+      return id || null;
+    }
+    if (
+      host === "youtube.com" ||
+      host === "m.youtube.com" ||
+      host === "music.youtube.com"
+    ) {
+      if (u.pathname === "/watch") {
+        const v = u.searchParams.get("v");
+        return v || null;
+      }
+      const parts = u.pathname.split("/").filter(Boolean);
+      // /shorts/<id>, /live/<id>, /embed/<id>
+      const first = parts[0] ?? "";
+      if (parts.length >= 2 && ["shorts", "live", "embed"].includes(first)) {
+        return parts[1] || null;
+      }
+    }
+  } catch {}
+  return null;
+}
+
 async function createResourceFromUrl(url: string) {
   const isYouTube =
     /(?:youtube\.com\/(?:watch\?v=|live\/|shorts\/)|youtu\.be\/)/i.test(url);
   if (isYouTube) {
-    const ytdlMod: any = await import("ytdl-core");
-    const ytdl = ytdlMod.default || ytdlMod;
-    let playUrl = url;
+    let ytdlMod: any;
     try {
-      if (ytdlMod.validateURL?.(url)) {
-        const id = ytdlMod.getURLVideoID(url);
-        playUrl = `https://www.youtube.com/watch?v=${id}`;
-      }
-    } catch {}
+      // 우선 유지보수 포크 시도 (eval로 TS 모듈 해석 회피)
+      // eslint-disable-next-line no-eval
+      ytdlMod = await (eval("import('@distube/ytdl-core')") as Promise<any>);
+    } catch {
+      // 미설치 시 기존 모듈로 폴백
+      ytdlMod = await import("ytdl-core");
+    }
+    const ytdl = ytdlMod.default || ytdlMod;
+
+    // URL 정규화: 변형 링크를 watch?v= 형태로 변환
+    const vid = extractYouTubeId(url) || (ytdlMod.getURLVideoID?.(url) ?? null);
+    const playUrl = vid ? `https://www.youtube.com/watch?v=${vid}` : url;
+
+    const headers: Record<string, string> = {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0 Safari/537.36",
+      "Accept-Language": "en-US,en;q=0.9",
+    };
+    if (process.env.YT_COOKIE) headers["Cookie"] = process.env.YT_COOKIE;
+
     const ytStream = ytdl(playUrl, {
       filter: "audioonly",
       quality: "highestaudio",
       highWaterMark: 1 << 25,
       dlChunkSize: 0,
-      requestOptions: {
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0 Safari/537.36",
-          "Accept-Language": "en-US,en;q=0.9",
-        },
-      },
+      requestOptions: { headers },
     });
     ytStream.on("error", (e: any) => {
       logger.error("ytdl stream error", {
