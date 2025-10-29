@@ -1,1 +1,1 @@
-export { translateCommandDefs as commandDefs } from "./features/translate/commands.js";
+export { translateCommandDefs as commandDefs } from "./commands/translate.js";
