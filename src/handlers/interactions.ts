@@ -105,7 +105,7 @@ async function handleStopCommand(
   }
   await safeReply(cmd, {
     content: `자동 번역이 해제되었습니다.`,
-    ephemeral: true,
+    flags: MessageFlags.Ephemeral,
   });
 }
 
@@ -151,7 +151,7 @@ async function handleUsageCommand(
     .setFooter({ text: "관리자 전용" })
     .setTimestamp(new Date());
 
-  await safeReply(cmd, { embeds: [embed], ephemeral: true });
+  await safeReply(cmd, { embeds: [embed], flags: MessageFlags.Ephemeral });
 }
 
 /**
