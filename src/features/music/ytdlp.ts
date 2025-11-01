@@ -41,8 +41,13 @@ export async function resolveTrack(input: string): Promise<ResolvedTrack> {
   const title: string = json.title ?? json.fulltitle ?? "unknown";
   const webpageUrl: string = json.webpage_url ?? json.original_url ?? finalInput;
   const isLive: boolean | undefined = json.is_live ?? undefined;
-  const durationSec: number | undefined = json.duration ?? undefined;
-  return { title, webpageUrl, streamUrl, durationSec, isLive };
+  const durationSec: number | undefined =
+    typeof json.duration === "number" ? json.duration : undefined;
+
+  const track: ResolvedTrack = { title, webpageUrl, streamUrl };
+  if (durationSec !== undefined) track.durationSec = durationSec;
+  if (isLive !== undefined) track.isLive = isLive;
+  return track;
 }
 
 function getYtDlpCommand(): string {
