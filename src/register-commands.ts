@@ -25,16 +25,6 @@ async function main() {
         body: commands,
       });
       console.log("Successfully reloaded application (guild) commands.");
-      // 중복 방지: 이전에 전역 등록했던 명령이 남아 있으면 길드 내에서 중복으로 보일 수 있음
-      // 길드 등록 시 전역 명령을 비워 중복을 방지한다.
-      try {
-        await rest.put(Routes.applicationCommands(clientId), { body: [] });
-        console.log(
-          "Cleared application (global) commands to avoid duplicates."
-        );
-      } catch (clearErr) {
-        console.warn("Failed to clear global commands (non-fatal)", clearErr);
-      }
     } else {
       console.log("Started refreshing application (global) commands.");
       await rest.put(Routes.applicationCommands(clientId), { body: commands });
