@@ -29,76 +29,91 @@ function buildInput(input: string): string {
 
 export async function resolveTrack(input: string): Promise<ResolvedTrack> {
   const finalInput = buildInput(input);
-  // yt-dlp JSON 출력으로 메타+스트림 URL 확보(옵션1: 비계정 우선)
-  const baseArgs = [
-    "-f",
-    "bestaudio/best",
-    "--no-playlist",
-    "--extractor-args",
-    "youtube:player_client=android",
-    "--geo-bypass",
-    "--sleep-requests",
-    "1",
-    "--force-ipv4",
-    "--dump-json",
-    finalInput,
-  ];
   const cmd = getYtDlpCommand();
-  logger.debug("music.ytdlp.exec", { cmd, args_preview: baseArgs.slice(0, 6), input });
+  const cookiesPath = process.env.YTDLP_COOKIES_PATH || "";
+  const DEFAULT_UA =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36";
+
+  function buildArgs(
+    playerClient: string,
+    format: string,
+    useCookies: boolean
+  ): string[] {
+    return [
+      "-f",
+      format,
+      "--no-playlist",
+      "--extractor-args",
+      `youtube:player_client=${playerClient}`,
+      ...(useCookies && cookiesPath ? ["--cookies", cookiesPath] : []),
+      "--user-agent",
+      DEFAULT_UA,
+      "--referer",
+      "https://www.youtube.com/",
+      "--geo-bypass",
+      "--sleep-requests",
+      "1",
+      "--force-ipv4",
+      "--dump-json",
+      finalInput,
+    ];
+  }
+
+  // 1) web+cookies (가능하면)
+  const attempts: Array<{
+    client: string;
+    format: string;
+    withCookies: boolean;
+  }> = [];
+  if (cookiesPath)
+    attempts.push({
+      client: "web",
+      format: "bestaudio/best",
+      withCookies: true,
+    });
+  // 2) tv+cookies (web 실패 시)
+  if (cookiesPath)
+    attempts.push({
+      client: "tv",
+      format: "bestaudio/best",
+      withCookies: true,
+    });
+  // 3) android+cookies 포맷 18 (봇확인 회피)
+  if (cookiesPath)
+    attempts.push({ client: "android", format: "18", withCookies: true });
+  // 4) android(무쿠키) + 포맷 18 (최후 수단)
+  attempts.push({ client: "android", format: "18", withCookies: false });
 
   let json: any;
-  try {
-    json = await runAndCollectJson(cmd, baseArgs);
-  } catch (e) {
-    // 옵션2: 쿠키가 제공된 경우 자동 재시도
-    const cookiesPath = process.env.YTDLP_COOKIES_PATH;
-    const cookiesBase64 = process.env.YTDLP_COOKIES_BASE64;
-    if (!cookiesPath && !cookiesBase64) throw e;
-
-    let tmpFile: string | null = null;
-    let cookieFileToUse: string = cookiesPath || "";
-    if (!cookieFileToUse && cookiesBase64) {
-      try {
-        const buf = Buffer.from(cookiesBase64, "base64");
-        tmpFile = path.join(
-          os.tmpdir(),
-          `yt_cookies_${Date.now()}_${Math.random().toString(36).slice(2)}.txt`
-        );
-        fs.writeFileSync(tmpFile, buf);
-        cookieFileToUse = tmpFile;
-      } catch (wErr) {
-        logger.error("music.ytdlp.cookies_write_failed", serializeError(wErr));
-      }
-    }
-    if (cookieFileToUse) {
-      const cookieArgs = insertCookiesArg(baseArgs, cookieFileToUse);
-      logger.info("music.ytdlp.retry_with_cookies", {
-        use_env_path: cookiesPath ? true : undefined,
-        used_tmpfile: tmpFile ? true : undefined,
-      });
-      try {
-        json = await runAndCollectJson(cmd, cookieArgs);
-      } catch (e2) {
-        logger.error("music.ytdlp.retry_failed", serializeError(e2));
-        throw e2;
-      } finally {
-        if (tmpFile) {
-          try { fs.unlinkSync(tmpFile); } catch {}
-        }
-      }
-    } else {
-      // 쿠키 정보가 있었지만 파일 생성 실패 등으로 사용 불가
-      throw e;
+  let lastErr: unknown;
+  for (const a of attempts) {
+    const args = buildArgs(a.client, a.format, a.withCookies);
+    logger.debug("music.ytdlp.exec", {
+      cmd,
+      client: a.client,
+      format: a.format,
+      with_cookies: a.withCookies || undefined,
+      args_preview: args.slice(0, 6),
+      input,
+    });
+    try {
+      json = await runAndCollectJson(cmd, args);
+      break;
+    } catch (e) {
+      lastErr = e;
+      continue;
     }
   }
-  // 포맷 선택에 따라 url 필드가 direct stream url
+  if (!json)
+    throw lastErr instanceof Error ? lastErr : new Error("yt-dlp failed");
+
   const streamUrl: string = json.url;
   const title: string = json.title ?? json.fulltitle ?? "unknown";
-  const webpageUrl: string = json.webpage_url ?? json.original_url ?? finalInput;
+  const webpageUrl: string =
+    json.webpage_url ?? json.original_url ?? finalInput;
   const isLive: boolean | undefined = json.is_live ?? undefined;
   const durationSec: number | undefined =
     typeof json.duration === "number" ? json.duration : undefined;
-
   const track: ResolvedTrack = { title, webpageUrl, streamUrl };
   if (durationSec !== undefined) track.durationSec = durationSec;
   if (isLive !== undefined) track.isLive = isLive;
@@ -114,9 +129,15 @@ export async function resolveTrack(input: string): Promise<ResolvedTrack> {
 function getYtDlpCommand(): string {
   const cwd = process.cwd();
   const bin = path.join(cwd, "bin");
-  const candidates = process.platform === "win32"
-    ? [path.join(bin, "yt-dlp.exe"), path.join(bin, "yt-dlp"), "yt-dlp.exe", "yt-dlp"]
-    : [path.join(bin, "yt-dlp"), "yt-dlp"];
+  const candidates =
+    process.platform === "win32"
+      ? [
+          path.join(bin, "yt-dlp.exe"),
+          path.join(bin, "yt-dlp"),
+          "yt-dlp.exe",
+          "yt-dlp",
+        ]
+      : [path.join(bin, "yt-dlp"), "yt-dlp"];
   for (const c of candidates) {
     try {
       if (!c.includes(path.sep)) return c; // PATH 후보는 바로 반환
@@ -124,14 +145,6 @@ function getYtDlpCommand(): string {
     } catch {}
   }
   return "yt-dlp";
-}
-
-function insertCookiesArg(args: string[], cookieFile: string): string[] {
-  const out = [...args];
-  // '--dump-json' 앞에 넣을 필요는 없지만, 가독성을 위해 앞쪽에 배치
-  const insertAt = Math.max(0, out.indexOf("--dump-json"));
-  out.splice(insertAt, 0, "--cookies", cookieFile);
-  return out;
 }
 
 async function runAndCollectJson(cmd: string, args: string[]): Promise<any> {
@@ -162,8 +175,8 @@ async function runAndCollectJson(cmd: string, args: string[]): Promise<any> {
       error: serializeError(e),
       stdout_sample: stdout.slice(0, 800),
     });
-    throw new Error(`Failed to parse yt-dlp JSON: ${String((e as any)?.message || e)}`);
+    throw new Error(
+      `Failed to parse yt-dlp JSON: ${String((e as any)?.message || e)}`
+    );
   }
 }
-
-
