@@ -217,6 +217,13 @@ async function handleMusicPlay(
   const query = cmd.options.getString("query", true);
   const member = await cmd.guild!.members.fetch(cmd.user.id);
   const voice = member.voice?.channel;
+  logger.info("music.cmd.play", {
+    interactionId: cmd.id,
+    guildId: cmd.guild?.id,
+    channelId: cmd.channelId,
+    userId: cmd.user.id,
+    query,
+  });
   if (!voice) {
     await safeReply(cmd, {
       content: "먼저 음성 채널에 접속해주세요.",
@@ -232,6 +239,14 @@ async function handleMusicPlay(
   }
   try {
     const item = await musicEnqueue(cmd.guild!, voice, query);
+    logger.info("music.cmd.play.enqueued", {
+      interactionId: cmd.id,
+      guildId: cmd.guild?.id,
+      channelId: cmd.channelId,
+      userId: cmd.user.id,
+      title: item.title,
+      webpageUrl: item.webpageUrl,
+    });
     // 2) 성공 시 채널에 공개 메시지로 안내(서식화)
     const addedLines: string[] = [];
     addedLines.push(":notes: **Queue Added**");
@@ -247,6 +262,7 @@ async function handleMusicPlay(
   } catch (e) {
     // 실패 시에는 에페메럴로 오류 안내
     try {
+      logger.error("music.cmd.play.failed", serializeError(e));
       if (cmd.deferred || cmd.replied) {
         await cmd.editReply({
           content: "에러가 발생하였습니다. 관리자에게 문의해주세요.",
@@ -264,12 +280,24 @@ async function handleMusicPlay(
 async function handleMusicSkip(
   cmd: ChatInputCommandInteraction
 ): Promise<void> {
+  logger.info("music.cmd.skip", {
+    interactionId: cmd.id,
+    guildId: cmd.guild?.id,
+    channelId: cmd.channelId,
+    userId: cmd.user.id,
+  });
   musicSkip(cmd.guild!.id);
   await safeReply(cmd, { content: "현재 재생 중인 음악을 건너뜁니다." });
 }
 async function handleMusicClear(
   cmd: ChatInputCommandInteraction
 ): Promise<void> {
+  logger.info("music.cmd.clear", {
+    interactionId: cmd.id,
+    guildId: cmd.guild?.id,
+    channelId: cmd.channelId,
+    userId: cmd.user.id,
+  });
   musicStop(cmd.guild!.id);
   await safeReply(cmd, { content: "모든 대기열을 제거했습니다." });
 }
@@ -277,6 +305,12 @@ async function handleMusicClear(
 async function handleMusicList(
   cmd: ChatInputCommandInteraction
 ): Promise<void> {
+  logger.info("music.cmd.list", {
+    interactionId: cmd.id,
+    guildId: cmd.guild?.id,
+    channelId: cmd.channelId,
+    userId: cmd.user.id,
+  });
   const { now, queue, startedAt } = musicGetQueue(cmd.guild!.id);
   if (!now && queue.length === 0) {
     await safeReply(cmd, {

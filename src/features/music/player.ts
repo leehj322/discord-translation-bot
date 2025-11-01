@@ -15,6 +15,7 @@ import { Guild, VoiceBasedChannel } from "discord.js";
 import prism from "prism-media";
 import ffmpegPath from "ffmpeg-static";
 import { resolveTrack, ResolvedTrack } from "./ytdlp.js";
+import { logger, serializeError } from "../../core/logger.js";
 
 // ffmpeg-static 경로를 prism FFmpeg가 사용하도록 설정
 if (ffmpegPath) {
@@ -44,7 +45,20 @@ export async function enqueue(
   voiceChannel: VoiceBasedChannel,
   input: string
 ): Promise<QueueItem> {
+  logger.info("music.enqueue.request", {
+    guildId: guild.id,
+    voiceChannelId: voiceChannel.id,
+    input,
+  });
   const item = await resolveTrack(input);
+  logger.info("music.enqueue.ok", {
+    guildId: guild.id,
+    voiceChannelId: voiceChannel.id,
+    title: item.title,
+    webpageUrl: item.webpageUrl,
+    hasDuration: typeof item.durationSec === "number" ? true : undefined,
+    isLive: item.isLive === true ? true : undefined,
+  });
   const state = await getOrCreateState(guild, voiceChannel);
   state.queue.push(item);
   if (state.player.state.status === AudioPlayerStatus.Idle && !state.now) {
@@ -75,12 +89,14 @@ export function getQueue(guildId: string): {
 export function skip(guildId: string): void {
   const s = guildStates.get(guildId);
   if (!s) return;
+  logger.info("music.skip", { guildId });
   s.player.stop(true);
 }
 
 export function stop(guildId: string): void {
   const s = guildStates.get(guildId);
   if (!s) return;
+  logger.info("music.stop", { guildId, queueSize: s.queue.length });
   s.queue.length = 0;
   s.player.stop(true);
 }
@@ -133,6 +149,9 @@ async function getOrCreateState(
   });
 
   connection.subscribe(player);
+  player.on("error", (e) => {
+    logger.error("music.player.error", serializeError(e));
+  });
 
   const state: GuildMusicState = {
     connection,
@@ -147,6 +166,13 @@ async function getOrCreateState(
   guildStates.set(guild.id, state);
 
   player.on(AudioPlayerStatus.Idle, () => {
+    if (state.now) {
+      logger.info("music.track.ended", {
+        guildId: guild.id,
+        title: state.now.title,
+        webpageUrl: state.now.webpageUrl,
+      });
+    }
     state.now = null;
     state.startedAt = null;
     if (state.queue.length > 0) {
@@ -174,6 +200,11 @@ async function playNext(guildId: string): Promise<void> {
   if (!next) return;
   s.now = next;
   s.startedAt = Date.now();
+  logger.info("music.track.start", {
+    guildId,
+    title: next.title,
+    webpageUrl: next.webpageUrl,
+  });
   if (s.idleTimer) {
     clearTimeout(s.idleTimer);
     s.idleTimer = null;
@@ -202,13 +233,22 @@ async function playNext(guildId: string): Promise<void> {
       "2",
     ],
   });
+  ffmpeg.on("error", (e: any) => {
+    logger.error("music.ffmpeg.error", serializeError(e));
+  });
 
   const opus = new prism.opus.Encoder({
     rate: 48_000,
     channels: 2,
     frameSize: 960,
   });
+  ;(opus as any).on?.("error", (e: any) => {
+    logger.error("music.opus.error", serializeError(e));
+  });
   const stream = ffmpeg.pipe(opus);
+  stream.on("error", (e: any) => {
+    logger.error("music.stream.error", serializeError(e));
+  });
 
   const resource = createAudioResource(stream, { inputType: StreamType.Opus });
   s.player.play(resource);
@@ -254,6 +294,7 @@ function ensureOccupancyWatcher(state: GuildMusicState, guildId: string): void {
           clearIntervalSafe(state);
           guildStates.delete(guildId);
         }
+        logger.info("music.voice.cleanup_no_channel", { guildId });
         return;
       }
       const members = (channel as VoiceBasedChannel).members;
@@ -270,6 +311,7 @@ function ensureOccupancyWatcher(state: GuildMusicState, guildId: string): void {
           clearIntervalSafe(state);
           guildStates.delete(guildId);
         }
+        logger.info("music.voice.leave_empty", { guildId });
       }
     } catch {}
   }, 3_000);
@@ -295,6 +337,7 @@ export function onChannelDelete(channelId: string): void {
         clearIntervalSafe(s);
         guildStates.delete(guildId);
       }
+      logger.info("music.voice.channel_deleted", { guildId, channelId });
     }
   }
 }
@@ -312,6 +355,7 @@ export async function maybeLeaveIfChannelEmpty(guild: Guild): Promise<void> {
       clearIntervalSafe(s);
       guildStates.delete(guild.id);
     }
+    logger.info("music.voice.cleanup_no_channel", { guildId: guild.id });
     return;
   }
   const members = (ch as VoiceBasedChannel).members;
@@ -327,5 +371,6 @@ export async function maybeLeaveIfChannelEmpty(guild: Guild): Promise<void> {
       clearIntervalSafe(s);
       guildStates.delete(guild.id);
     }
+    logger.info("music.voice.leave_empty", { guildId: guild.id });
   }
 }

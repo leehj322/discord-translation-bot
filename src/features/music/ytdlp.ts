@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { logger, serializeError } from "../../core/logger.js";
 
 export type ResolvedTrack = {
   title: string;
@@ -35,7 +36,9 @@ export async function resolveTrack(input: string): Promise<ResolvedTrack> {
     "--dump-json",
     finalInput,
   ];
-  const json = await runAndCollectJson(getYtDlpCommand(), args);
+  const cmd = getYtDlpCommand();
+  logger.debug("music.ytdlp.exec", { cmd, args_preview: args.slice(0, 4), input });
+  const json = await runAndCollectJson(cmd, args);
   // 포맷 선택에 따라 url 필드가 direct stream url
   const streamUrl: string = json.url;
   const title: string = json.title ?? json.fulltitle ?? "unknown";
@@ -47,6 +50,12 @@ export async function resolveTrack(input: string): Promise<ResolvedTrack> {
   const track: ResolvedTrack = { title, webpageUrl, streamUrl };
   if (durationSec !== undefined) track.durationSec = durationSec;
   if (isLive !== undefined) track.isLive = isLive;
+  logger.info("music.ytdlp.resolved", {
+    title,
+    webpageUrl,
+    isLive: isLive === true ? true : undefined,
+    durationSec: typeof durationSec === "number" ? durationSec : undefined,
+  });
   return track;
 }
 
@@ -77,14 +86,23 @@ async function runAndCollectJson(cmd: string, args: string[]): Promise<any> {
     child.on("close", (c) => resolve(c ?? 0));
   });
   if (code !== 0) {
-    const err = new Error(`yt-dlp failed (${code}): ${stderr || stdout}`);
+    const stderrSample = (stderr || stdout || "").slice(0, 800);
+    logger.error("music.ytdlp.exit_nonzero", {
+      code,
+      stderr_sample: stderrSample,
+    });
+    const err = new Error(`yt-dlp failed (${code})`);
     (err as any).code = code;
     throw err;
   }
   try {
     return JSON.parse(stdout.trim());
   } catch (e) {
-    throw new Error(`Failed to parse yt-dlp JSON: ${e}`);
+    logger.error("music.ytdlp.json_parse_failed", {
+      error: serializeError(e),
+      stdout_sample: stdout.slice(0, 800),
+    });
+    throw new Error(`Failed to parse yt-dlp JSON: ${String((e as any)?.message || e)}`);
   }
 }
 
