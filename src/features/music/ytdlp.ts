@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import os from "node:os";
 import { logger, serializeError } from "../../core/logger.js";
 
 export type ResolvedTrack = {
@@ -28,17 +29,68 @@ function buildInput(input: string): string {
 
 export async function resolveTrack(input: string): Promise<ResolvedTrack> {
   const finalInput = buildInput(input);
-  // yt-dlp JSON 출력으로 메타+스트림 URL 확보
-  const args = [
+  // yt-dlp JSON 출력으로 메타+스트림 URL 확보(옵션1: 비계정 우선)
+  const baseArgs = [
     "-f",
     "bestaudio/best",
     "--no-playlist",
+    "--extractor-args",
+    "youtube:player_client=android",
+    "--geo-bypass",
+    "--sleep-requests",
+    "1",
+    "--force-ipv4",
     "--dump-json",
     finalInput,
   ];
   const cmd = getYtDlpCommand();
-  logger.debug("music.ytdlp.exec", { cmd, args_preview: args.slice(0, 4), input });
-  const json = await runAndCollectJson(cmd, args);
+  logger.debug("music.ytdlp.exec", { cmd, args_preview: baseArgs.slice(0, 6), input });
+
+  let json: any;
+  try {
+    json = await runAndCollectJson(cmd, baseArgs);
+  } catch (e) {
+    // 옵션2: 쿠키가 제공된 경우 자동 재시도
+    const cookiesPath = process.env.YTDLP_COOKIES_PATH;
+    const cookiesBase64 = process.env.YTDLP_COOKIES_BASE64;
+    if (!cookiesPath && !cookiesBase64) throw e;
+
+    let tmpFile: string | null = null;
+    let cookieFileToUse: string = cookiesPath || "";
+    if (!cookieFileToUse && cookiesBase64) {
+      try {
+        const buf = Buffer.from(cookiesBase64, "base64");
+        tmpFile = path.join(
+          os.tmpdir(),
+          `yt_cookies_${Date.now()}_${Math.random().toString(36).slice(2)}.txt`
+        );
+        fs.writeFileSync(tmpFile, buf);
+        cookieFileToUse = tmpFile;
+      } catch (wErr) {
+        logger.error("music.ytdlp.cookies_write_failed", serializeError(wErr));
+      }
+    }
+    if (cookieFileToUse) {
+      const cookieArgs = insertCookiesArg(baseArgs, cookieFileToUse);
+      logger.info("music.ytdlp.retry_with_cookies", {
+        use_env_path: cookiesPath ? true : undefined,
+        used_tmpfile: tmpFile ? true : undefined,
+      });
+      try {
+        json = await runAndCollectJson(cmd, cookieArgs);
+      } catch (e2) {
+        logger.error("music.ytdlp.retry_failed", serializeError(e2));
+        throw e2;
+      } finally {
+        if (tmpFile) {
+          try { fs.unlinkSync(tmpFile); } catch {}
+        }
+      }
+    } else {
+      // 쿠키 정보가 있었지만 파일 생성 실패 등으로 사용 불가
+      throw e;
+    }
+  }
   // 포맷 선택에 따라 url 필드가 direct stream url
   const streamUrl: string = json.url;
   const title: string = json.title ?? json.fulltitle ?? "unknown";
@@ -72,6 +124,14 @@ function getYtDlpCommand(): string {
     } catch {}
   }
   return "yt-dlp";
+}
+
+function insertCookiesArg(args: string[], cookieFile: string): string[] {
+  const out = [...args];
+  // '--dump-json' 앞에 넣을 필요는 없지만, 가독성을 위해 앞쪽에 배치
+  const insertAt = Math.max(0, out.indexOf("--dump-json"));
+  out.splice(insertAt, 0, "--cookies", cookieFile);
+  return out;
 }
 
 async function runAndCollectJson(cmd: string, args: string[]): Promise<any> {
