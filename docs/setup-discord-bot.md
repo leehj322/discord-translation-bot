@@ -19,7 +19,7 @@
 3. Bot Permissions:
 
    - View Channels, Send Messages, Read Message History, Embed Links
-   - (음악 기능 제거됨: Voice 권한 불필요)
+   - Connect, Speak, Use Voice Activity (음성 채널)
 
 4. 생성된 URL로 길드(서버)에 봇 초대
 
@@ -45,12 +45,26 @@ npm run register
 npm run dev
 ```
 
-봇이 로그인되면 서버에서 `/auto` 명령을 확인할 수 있습니다.
+봇이 로그인되면 서버에서 `/auto`(번역)와 `/music`(음악) 명령을 확인할 수 있습니다.
 
-<!-- 음악 기능 제거됨: 음성/Opus 관련 가이드 삭제 -->
+### 음악 기능 빠른 점검
+
+- 음성 채널에 접속 후 다음을 테스트하세요:
+  - `/music play <url|검색어>`: 재생 시작
+  - `/music pause` / `/music resume`: 일시정지/재개
+  - `/music skip` / `/music stop`: 스킵/정지
+  - `/music queue`: 큐 확인
 
 ## 7) 명령 동작 요약
 
 - `/auto`: 채널 전체 공개 번역 활성화(한국어↔일본어 자동 감지)
 - `/stop`: 현재 채널의 자동 번역 해제
 - `/usage`: 관리자 전용 임베드 UI로 사용량 요약 표시
+
+## 권한·인텐트 요약
+
+- 인텐트(Developer Portal → Bot 탭 → Privileged Gateway Intents)
+  - MESSAGE CONTENT INTENT: On
+- OAuth2 권한 설정(OAuth2 → URL Generator)
+  - Scopes: `bot`, `applications.commands`
+  - Bot Permissions: View Channels, Send Messages, Read Message History, Embed Links, Connect, Speak, Use Voice Activity

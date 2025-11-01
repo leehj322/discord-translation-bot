@@ -66,3 +66,47 @@ $$;
 - `addCharUsage`로 문자 수 총합/길드/채널/사용자 단위 카운트 증가
 - Supabase 설정 시 RPC `usage_increment`, `usage_add_chars`로 영속화
 - `/usage` 명령으로 임베드 UI 표시(요청 수/문자 수)
+
+## 음악 기능 아키텍처
+
+### 목표
+
+- 단일 Render 배포(추가 서비스 없이)에서 YouTube 오디오 재생 지원
+- 안정성 확보를 위해 `yt-dlp` + `deno` 조합을 사용하여 오디오 URL 추출
+- 오디오 변환은 `ffmpeg-static`을 사용하고, 전송은 `@discordjs/voice`로 수행
+
+### 모듈 구성(`src/features/music/`)
+
+- `ytdlp.ts`: `yt-dlp`(CLI) 호출 래퍼. `deno`가 PATH에 있어야 함
+- `player.ts`: 길드별 오디오 연결/플레이어/큐 관리, 스킵/클리어, 30초 유휴 종료, 채널 인원 0명 시 즉시 종료
+- `commands.ts`: `/music` 명령군 정의(`play|skip|clear|list`)
+
+### 데이터 구조/상태
+
+- 길드 ID → `{ connection, audioPlayer, queue, nowPlaying }`
+- 큐 항목: `{ title, url, duration, isLive, streamFactory }`
+- 자동 종료: 큐 소진 후 일정 시간 유휴 시 연결 종료
+
+### 처리 파이프라인
+
+1. `/music play <url|검색어>` 수신
+2. `yt-dlp`로 오디오 소스 파악: URL 또는 검색어 → 적절한 포맷 URL/스트림 추출
+3. `ffmpeg-static`으로 Discord 호환 PCM/Opus 변환
+4. `@discordjs/voice`로 음성 채널에 전송
+5. 재생 완료/오류 시 다음 항목으로 전환, 큐가 비면 30초 유휴 타이머 가동
+6. 채널 인원 0명(봇 제외) 시 즉시 큐 비우고 종료
+
+### 출력 형식
+
+- `/music play <url|검색어>`: 채널 공개 메시지로 등록 내역 안내(링크 프리뷰 허용)
+- `/music list`: 에페메럴 텍스트로 현재곡/경과시간/대기열 표시(임베드 억제)
+
+### 의존성
+
+- 런타임: Node 18+, `deno`(단일 바이너리), `yt-dlp`(단일 바이너리)
+- NPM: `@discordjs/voice`, `@discordjs/opus`, `prism-media`, `ffmpeg-static`
+
+### 배포(요약)
+
+- Render Build 단계에서 `./bin/deno`, `./bin/yt-dlp`를 다운로드하여 포함
+- Start 단계에서 `PATH="$PWD/bin:$PATH"` 설정 후 봇 실행
