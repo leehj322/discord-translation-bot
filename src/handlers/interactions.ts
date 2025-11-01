@@ -8,7 +8,15 @@ import {
 import { publicSessions } from "../features/translate/sessions.js";
 import { getUsageSummary } from "../features/translate/usage.js";
 // 음악 기능 제거됨
-import { logger } from "../core/logger.js";
+import { logger, serializeError } from "../core/logger.js";
+import {
+  enqueue as musicEnqueue,
+  getQueue as musicGetQueue,
+  skip as musicSkip,
+  onChannelDelete as musicOnChannelDelete,
+  maybeLeaveIfChannelEmpty,
+  stop as musicStop,
+} from "../features/music/player.js";
 
 const registeredClients = new WeakSet<Client>();
 const processedInteractionIds = new Set<string>();
@@ -155,7 +163,7 @@ export function registerInteractionHandler(client: Client): void {
   if (registeredClients.has(client)) return;
   registeredClients.add(client);
   client.on("interactionCreate", async (interaction) => {
-    // 음악 관련 버튼 핸들링 제거됨
+    // 음악 관련 명령 핸들링
 
     if (!interaction.isChatInputCommand()) return;
     if (processedInteractionIds.has(interaction.id)) return;
@@ -173,6 +181,144 @@ export function registerInteractionHandler(client: Client): void {
       return;
     }
 
-    // 음악 명령 제거됨
+    // music 그룹
+    if (commandName === "music") {
+      const sub = cmd.options.getSubcommand();
+      if (sub === "play") return handleMusicPlay(cmd);
+      if (sub === "skip") return handleMusicSkip(cmd);
+      if (sub === "clear") return handleMusicClear(cmd);
+      if (sub === "list") return handleMusicList(cmd);
+      return;
+    }
   });
+
+  // 채널 삭제 시 음악 큐 정리
+  client.on("channelDelete", (channel) => {
+    try {
+      musicOnChannelDelete(channel.id);
+    } catch (e) {
+      logger.error("music channelDelete handler failed", serializeError(e));
+    }
+  });
+
+  // 보이스 상태 변경 시 즉시 점검하여 빈 채널이면 종료
+  client.on("voiceStateUpdate", async (_old, now) => {
+    try {
+      await maybeLeaveIfChannelEmpty(now.guild);
+    } catch (e) {
+      logger.error("music voiceStateUpdate handler failed", serializeError(e));
+    }
+  });
+}
+
+async function handleMusicPlay(
+  cmd: ChatInputCommandInteraction
+): Promise<void> {
+  const query = cmd.options.getString("query", true);
+  const member = await cmd.guild!.members.fetch(cmd.user.id);
+  const voice = member.voice?.channel;
+  if (!voice) {
+    await safeReply(cmd, {
+      content: "먼저 음성 채널에 접속해주세요.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  // 1) 즉시 defer(에페메럴)로 타임아웃 방지
+  if (!cmd.deferred && !cmd.replied) {
+    try {
+      await cmd.deferReply({ ephemeral: true });
+    } catch {}
+  }
+  try {
+    const item = await musicEnqueue(cmd.guild!, voice, query);
+    // 2) 성공 시 채널에 공개 메시지로 안내(서식화)
+    const addedLines: string[] = [];
+    addedLines.push(":notes: **Queue Added**");
+    addedLines.push(`> [${item.title}](${item.webpageUrl})`);
+    const addedMsg = addedLines.join("\n");
+    if (cmd.channel && (cmd.channel as any).send) {
+      await (cmd.channel as any).send({ content: addedMsg });
+    }
+    // 초기 에페메럴 응답 제거(있으면)
+    try {
+      await cmd.deleteReply();
+    } catch {}
+  } catch (e) {
+    // 실패 시에는 에페메럴로 오류 안내
+    try {
+      if (cmd.deferred || cmd.replied) {
+        await cmd.editReply({
+          content: "에러가 발생하였습니다. 관리자에게 문의해주세요.",
+        });
+      } else {
+        await safeReply(cmd, {
+          content: "에러가 발생하였습니다. 관리자에게 문의해주세요.",
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+    } catch {}
+  }
+}
+
+async function handleMusicSkip(
+  cmd: ChatInputCommandInteraction
+): Promise<void> {
+  musicSkip(cmd.guild!.id);
+  await safeReply(cmd, { content: "현재 재생 중인 음악을 건너뜁니다." });
+}
+async function handleMusicClear(
+  cmd: ChatInputCommandInteraction
+): Promise<void> {
+  musicStop(cmd.guild!.id);
+  await safeReply(cmd, { content: "모든 대기열을 제거했습니다." });
+}
+
+async function handleMusicList(
+  cmd: ChatInputCommandInteraction
+): Promise<void> {
+  const { now, queue, startedAt } = musicGetQueue(cmd.guild!.id);
+  if (!now && queue.length === 0) {
+    await safeReply(cmd, {
+      content: "대기열이 비었습니다.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  const lines: string[] = [];
+  lines.push(":notes: **Now Playing**");
+  lines.push(`> ▶ ${now ? `[${now.title}](${now.webpageUrl})` : "-"}`);
+  if (now && typeof now.durationSec === "number") {
+    const elapsed =
+      startedAt != null
+        ? Math.max(0, Math.floor((Date.now() - startedAt) / 1000))
+        : 0;
+    const clamped = Math.min(elapsed, now.durationSec);
+    lines.push(
+      `> :clock10: ${formatDuration(clamped)} / ${formatDuration(
+        now.durationSec
+      )}`
+    );
+  }
+  lines.push("━━━━━━━━━━━━━━━");
+  if (queue.length > 0) {
+    lines.push(":scroll: **Queue**");
+    for (const q of queue.slice(0, 50)) {
+      lines.push(`${queue.indexOf(q) + 1}. [${q.title}](${q.webpageUrl})`);
+    }
+  }
+  const body = lines.join("\n");
+  await safeReply(cmd, {
+    content: body,
+    flags: (MessageFlags.Ephemeral | MessageFlags.SuppressEmbeds) as number,
+  });
+}
+
+function formatDuration(totalSeconds: number): string {
+  if (!Number.isFinite(totalSeconds) || totalSeconds < 0) return "00:00";
+  const s = Math.floor(totalSeconds % 60);
+  const m = Math.floor((totalSeconds / 60) % 60);
+  const h = Math.floor(totalSeconds / 3600);
+  const pad = (n: number) => (n < 10 ? `0${n}` : String(n));
+  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
 }

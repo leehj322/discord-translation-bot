@@ -10,7 +10,9 @@ export const translateCommandDefs = [
     .setName("translate")
     .setDescription("번역 관련 명령어")
     .addSubcommand((sub) =>
-      sub.setName("auto").setDescription("자동 번역 활성화 (ko↔jp 자동 감지).")
+      sub
+        .setName("auto")
+        .setDescription("현재 채널의 자동 번역을 활성화 합니다. (ko + jp)")
     )
     .addSubcommand((sub) =>
       sub.setName("stop").setDescription("채널 자동 번역을 해제합니다.")
