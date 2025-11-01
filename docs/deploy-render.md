@@ -12,13 +12,15 @@
 2. 리포지토리 선택 → Branch 선택
 3. Runtime: Node
 4. Build Command:
-   - 음악 기능을 사용할 경우 `deno`와 `yt-dlp` 바이너리를 빌드 단계에 다운로드합니다.
-   - 예시:
+   - 음악 기능을 사용할 경우 `deno`(zip)와 `yt-dlp` 바이너리를 빌드 단계에 다운로드합니다.
+   - 예시(Linux x86_64 기준):
 
 ```
 npm install && \
 mkdir -p bin && \
-curl -fsSL https://github.com/denoland/deno/releases/latest/download/deno-x86_64-unknown-linux-gnu -o bin/deno && chmod +x bin/deno && \
+curl -fsSL https://github.com/denoland/deno/releases/latest/download/deno-x86_64-unknown-linux-gnu.zip -o /tmp/deno.zip && \
+unzip -o -q /tmp/deno.zip -d bin && rm -f /tmp/deno.zip && \
+chmod +x bin/deno && \
 curl -fsSL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o bin/yt-dlp && chmod +x bin/yt-dlp && \
 npm run build
 ```
