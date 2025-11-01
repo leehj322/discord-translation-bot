@@ -1,3 +1,19 @@
+# dependencies / build
+node_modules/
+dist/
+
+# binaries downloaded at build/runtime
+bin/
+
+# env / logs
+.env
+.env.*
+*.log
+npm-debug.log*
+yarn-error.log*
+
+# misc
+.DS_Store
 node_modules
 .env
 .DS_Store
