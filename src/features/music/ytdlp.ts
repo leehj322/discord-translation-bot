@@ -99,7 +99,9 @@ export async function resolveTrack(input: string): Promise<ResolvedTrack> {
   const cookieSpec = await prepareCookieArgs();
   const cookieArgs = cookieSpec.args;
 
-  if (cookieArgs.length === 0) {
+  const allowCookieLess = process.env.APP_ENV?.trim() === "local";
+
+  if (cookieArgs.length === 0 && !allowCookieLess) {
     await cookieSpec.cleanup();
     throw new Error(
       "YTDLP cookies are not configured; expected /etc/secrets/cookies.txt"
@@ -114,6 +116,7 @@ export async function resolveTrack(input: string): Promise<ResolvedTrack> {
       cookieSpec.sourcePath && fs.existsSync(cookieSpec.sourcePath)
         ? true
         : undefined,
+    allow_cookie_less: allowCookieLess || undefined,
     common_youtube_args: COMMON_YOUTUBE_ARGS,
   });
 
@@ -149,13 +152,13 @@ export async function resolveTrack(input: string): Promise<ResolvedTrack> {
     {
       client: "web",
       format: "bestaudio/best",
-      cookieArgs: [...cookieArgs],
+      cookieArgs: allowCookieLess ? [] : [...cookieArgs],
       youtubeArgs: [],
     },
     {
       client: "android",
       format: "18",
-      cookieArgs: [...cookieArgs],
+      cookieArgs: allowCookieLess ? [] : [...cookieArgs],
       youtubeArgs: ["player_client=android"],
     },
   ];
