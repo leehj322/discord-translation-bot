@@ -99,6 +99,13 @@ export async function resolveTrack(input: string): Promise<ResolvedTrack> {
   const cookieSpec = await prepareCookieArgs();
   const cookieArgs = cookieSpec.args;
 
+  if (cookieArgs.length === 0) {
+    await cookieSpec.cleanup();
+    throw new Error(
+      "YTDLP cookies are not configured; expected /etc/secrets/cookies.txt"
+    );
+  }
+
   logger.debug("music.ytdlp.config", {
     cmd,
     cookie_path: cookieSpec.sourcePath || COOKIE_FILE_PATH || undefined,
@@ -138,39 +145,20 @@ export async function resolveTrack(input: string): Promise<ResolvedTrack> {
     return args;
   }
 
-  const attempts: Attempt[] = [];
-
-  if (cookieArgs.length > 0) {
-    attempts.push(
-      {
-        client: "web",
-        format: "bestaudio/best",
-        cookieArgs: [...cookieArgs],
-        youtubeArgs: [],
-      },
-      {
-        client: "android",
-        format: "18",
-        cookieArgs: [...cookieArgs],
-        youtubeArgs: ["player_client=android"],
-      }
-    );
-  }
-
-  attempts.push(
+  const attempts: Attempt[] = [
     {
       client: "web",
       format: "bestaudio/best",
-      cookieArgs: [],
+      cookieArgs: [...cookieArgs],
       youtubeArgs: [],
     },
     {
       client: "android",
       format: "18",
-      cookieArgs: [],
+      cookieArgs: [...cookieArgs],
       youtubeArgs: ["player_client=android"],
-    }
-  );
+    },
+  ];
 
   let json: any;
   let lastErr: unknown;
@@ -199,9 +187,8 @@ export async function resolveTrack(input: string): Promise<ResolvedTrack> {
           attempt_index: attemptIndex,
           client: a.client,
           format: a.format,
-          used_cookies: a.cookieArgs.length > 0 ? true : undefined,
-          cookie_source_path:
-            a.cookieArgs.length > 0 ? cookieSpec.sourcePath : undefined,
+          used_cookies: true,
+          cookie_source_path: cookieSpec.sourcePath,
           extractor_args: extractorArgsCombined,
         });
         break;
@@ -210,9 +197,8 @@ export async function resolveTrack(input: string): Promise<ResolvedTrack> {
           attempt_index: attemptIndex,
           client: a.client,
           format: a.format,
-          used_cookies: a.cookieArgs.length > 0 ? true : undefined,
-          cookie_source_path:
-            a.cookieArgs.length > 0 ? cookieSpec.sourcePath : undefined,
+          used_cookies: true,
+          cookie_source_path: cookieSpec.sourcePath,
           extractor_args: extractorArgsCombined,
           error: serializeError(e),
         });

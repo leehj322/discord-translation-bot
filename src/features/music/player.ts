@@ -115,6 +115,10 @@ async function getOrCreateState(
     selfDeaf: true,
   });
 
+  connection.on("error", (err) => {
+    logger.error("music.voice.connection_error", serializeError(err));
+  });
+
   connection.on(
     VoiceConnectionStatus.Disconnected,
     async (oldState, newState) => {
@@ -172,6 +176,15 @@ async function getOrCreateState(
   };
   guildStates.set(guild.id, state);
 
+  const ready = await ensureConnectionReady(connection, guild.id, 15_000);
+  if (!ready) {
+    guildStates.delete(guild.id);
+    try {
+      connection.destroy();
+    } catch {}
+    throw new Error("Failed to establish voice connection");
+  }
+
   player.on(AudioPlayerStatus.Idle, () => {
     if (state.now) {
       logger.info("music.track.ended", {
@@ -205,6 +218,12 @@ async function playNext(guildId: string): Promise<void> {
   if (!s) return;
   const next = s.queue.shift();
   if (!next) return;
+  const ready = await ensureConnectionReady(s.connection, guildId, 5_000);
+  if (!ready) {
+    s.queue.unshift(next);
+    logger.warn("music.voice.not_ready", { guildId });
+    return;
+  }
   s.now = next;
   s.startedAt = Date.now();
   logger.info("music.track.start", {
@@ -288,6 +307,24 @@ async function playNext(guildId: string): Promise<void> {
 
   // 주기적으로 채널 점유 상태 확인(사람이 없으면 종료)
   ensureOccupancyWatcher(s, guildId);
+}
+
+async function ensureConnectionReady(
+  connection: VoiceConnection,
+  guildId: string,
+  timeoutMs: number
+): Promise<boolean> {
+  try {
+    await entersState(connection, VoiceConnectionStatus.Ready, timeoutMs);
+    return true;
+  } catch (err) {
+    logger.error("music.voice.ready_failed", {
+      guildId,
+      timeoutMs,
+      error: serializeError(err),
+    });
+    return false;
+  }
 }
 
 function wait(ms: number): Promise<void> {
