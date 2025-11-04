@@ -27,78 +27,193 @@ function buildInput(input: string): string {
   return `ytsearch1:${input}`;
 }
 
-export async function resolveTrack(input: string): Promise<ResolvedTrack> {
-  const finalInput = buildInput(input);
-  // yt-dlp JSON 출력으로 메타+스트림 URL 확보(옵션1: 비계정 우선)
-  const baseArgs = [
-    "-f",
-    "bestaudio/best",
-    "--no-playlist",
-    "--extractor-args",
-    "youtube:player_client=android",
-    "--geo-bypass",
-    "--sleep-requests",
-    "1",
-    "--force-ipv4",
-    "--dump-json",
-    finalInput,
-  ];
-  const cmd = getYtDlpCommand();
-  logger.debug("music.ytdlp.exec", { cmd, args_preview: baseArgs.slice(0, 6), input });
+const COOKIE_FILE_PATH = process.env.YTDLP_COOKIES_PATH?.trim();
+const COMMON_YOUTUBE_ARGS = ["no_client_sabr=yes"] as const;
 
-  let json: any;
+type Attempt = {
+  client: "web" | "android";
+  format: string;
+  cookieArgs: string[];
+  youtubeArgs: string[];
+};
+
+async function prepareCookieArgs(): Promise<{
+  args: string[];
+  sourcePath?: string;
+  tempPath?: string;
+  cleanup: () => Promise<void>;
+}> {
+  if (!COOKIE_FILE_PATH) {
+    return { args: [], cleanup: async () => {} };
+  }
+
+  const sourcePath = path.resolve(COOKIE_FILE_PATH);
+  if (!fs.existsSync(sourcePath)) {
+    logger.warn("music.ytdlp.cookie_missing", { sourcePath });
+    return { args: [], sourcePath, cleanup: async () => {} };
+  }
+
+  const tempPath = path.join(
+    os.tmpdir(),
+    `ytdlp-cookies-${process.pid}-${Date.now()}-${Math.random()
+      .toString(16)
+      .slice(2)}.txt`
+  );
+
   try {
-    json = await runAndCollectJson(cmd, baseArgs);
-  } catch (e) {
-    // 옵션2: 쿠키가 제공된 경우 자동 재시도
-    const cookiesPath = process.env.YTDLP_COOKIES_PATH;
-    const cookiesBase64 = process.env.YTDLP_COOKIES_BASE64;
-    if (!cookiesPath && !cookiesBase64) throw e;
+    await fs.promises.copyFile(sourcePath, tempPath);
+  } catch (error) {
+    logger.warn("music.ytdlp.cookie_copy_failed", {
+      sourcePath,
+      tempPath,
+      error: serializeError(error),
+    });
+    return { args: [], sourcePath, cleanup: async () => {} };
+  }
 
-    let tmpFile: string | null = null;
-    let cookieFileToUse: string = cookiesPath || "";
-    if (!cookieFileToUse && cookiesBase64) {
+  return {
+    args: ["--cookies", tempPath],
+    sourcePath,
+    tempPath,
+    cleanup: async () => {
       try {
-        const buf = Buffer.from(cookiesBase64, "base64");
-        tmpFile = path.join(
-          os.tmpdir(),
-          `yt_cookies_${Date.now()}_${Math.random().toString(36).slice(2)}.txt`
-        );
-        fs.writeFileSync(tmpFile, buf);
-        cookieFileToUse = tmpFile;
-      } catch (wErr) {
-        logger.error("music.ytdlp.cookies_write_failed", serializeError(wErr));
-      }
-    }
-    if (cookieFileToUse) {
-      const cookieArgs = insertCookiesArg(baseArgs, cookieFileToUse);
-      logger.info("music.ytdlp.retry_with_cookies", {
-        use_env_path: cookiesPath ? true : undefined,
-        used_tmpfile: tmpFile ? true : undefined,
-      });
-      try {
-        json = await runAndCollectJson(cmd, cookieArgs);
-      } catch (e2) {
-        logger.error("music.ytdlp.retry_failed", serializeError(e2));
-        throw e2;
-      } finally {
-        if (tmpFile) {
-          try { fs.unlinkSync(tmpFile); } catch {}
+        await fs.promises.unlink(tempPath);
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException)?.code !== "ENOENT") {
+          logger.warn("music.ytdlp.cookie_cleanup_failed", {
+            tempPath,
+            error: serializeError(err),
+          });
         }
       }
-    } else {
-      // 쿠키 정보가 있었지만 파일 생성 실패 등으로 사용 불가
-      throw e;
+    },
+  };
+}
+
+export async function resolveTrack(input: string): Promise<ResolvedTrack> {
+  const finalInput = buildInput(input);
+  const cmd = getYtDlpCommand();
+  const DEFAULT_UA =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36";
+
+  const cookieSpec = await prepareCookieArgs();
+  const cookieArgs = cookieSpec.args;
+
+  logger.debug("music.ytdlp.config", {
+    cmd,
+    cookie_path: cookieSpec.sourcePath || COOKIE_FILE_PATH || undefined,
+    cookie_temp_path: cookieSpec.tempPath,
+    cookie_file_exists:
+      cookieSpec.sourcePath && fs.existsSync(cookieSpec.sourcePath)
+        ? true
+        : undefined,
+    common_youtube_args: COMMON_YOUTUBE_ARGS,
+  });
+
+  function buildArgs(attempt: Attempt): string[] {
+    const args = [
+      "-f",
+      attempt.format,
+      "--no-playlist",
+      "--user-agent",
+      DEFAULT_UA,
+      "--referer",
+      "https://www.youtube.com/",
+      "--geo-bypass",
+      "--sleep-requests",
+      "1",
+      "--force-ipv4",
+    ];
+
+    const youtubeArgs = [...COMMON_YOUTUBE_ARGS, ...attempt.youtubeArgs];
+    if (youtubeArgs.length > 0) {
+      args.push("--extractor-args", `youtube:${youtubeArgs.join("&")}`);
     }
+
+    if (attempt.cookieArgs.length > 0) {
+      args.push(...attempt.cookieArgs);
+    }
+
+    args.push("--dump-json", finalInput);
+    return args;
   }
-  // 포맷 선택에 따라 url 필드가 direct stream url
+
+  const attempts: Attempt[] = [];
+
+  if (cookieArgs.length > 0) {
+    attempts.push(
+      {
+        client: "web",
+        format: "bestaudio/best",
+        cookieArgs: [...cookieArgs],
+        youtubeArgs: [],
+      },
+      {
+        client: "android",
+        format: "18",
+        cookieArgs: [...cookieArgs],
+        youtubeArgs: ["player_client=android"],
+      }
+    );
+  }
+
+  attempts.push(
+    {
+      client: "web",
+      format: "bestaudio/best",
+      cookieArgs: [],
+      youtubeArgs: [],
+    },
+    {
+      client: "android",
+      format: "18",
+      cookieArgs: [],
+      youtubeArgs: ["player_client=android"],
+    }
+  );
+
+  let json: any;
+  let lastErr: unknown;
+  try {
+    for (const a of attempts) {
+      const args = buildArgs(a);
+      const extractorArgsCombined = (() => {
+        const idx = args.indexOf("--extractor-args");
+        return idx >= 0 ? args[idx + 1] : undefined;
+      })();
+      logger.debug("music.ytdlp.exec", {
+        cmd,
+        client: a.client,
+        format: a.format,
+        cookie_file: a.cookieArgs.length > 0 ? cookieSpec.tempPath : undefined,
+        cookie_source_path:
+          a.cookieArgs.length > 0 ? cookieSpec.sourcePath : undefined,
+        youtube_args: a.youtubeArgs,
+        extractor_args_combined: extractorArgsCombined,
+        args_preview: args.slice(0, 6),
+        input,
+      });
+      try {
+        json = await runAndCollectJson(cmd, args);
+        break;
+      } catch (e) {
+        lastErr = e;
+        continue;
+      }
+    }
+  } finally {
+    await cookieSpec.cleanup();
+  }
+  if (!json)
+    throw lastErr instanceof Error ? lastErr : new Error("yt-dlp failed");
+
   const streamUrl: string = json.url;
   const title: string = json.title ?? json.fulltitle ?? "unknown";
-  const webpageUrl: string = json.webpage_url ?? json.original_url ?? finalInput;
+  const webpageUrl: string =
+    json.webpage_url ?? json.original_url ?? finalInput;
   const isLive: boolean | undefined = json.is_live ?? undefined;
   const durationSec: number | undefined =
     typeof json.duration === "number" ? json.duration : undefined;
-
   const track: ResolvedTrack = { title, webpageUrl, streamUrl };
   if (durationSec !== undefined) track.durationSec = durationSec;
   if (isLive !== undefined) track.isLive = isLive;
@@ -114,9 +229,15 @@ export async function resolveTrack(input: string): Promise<ResolvedTrack> {
 function getYtDlpCommand(): string {
   const cwd = process.cwd();
   const bin = path.join(cwd, "bin");
-  const candidates = process.platform === "win32"
-    ? [path.join(bin, "yt-dlp.exe"), path.join(bin, "yt-dlp"), "yt-dlp.exe", "yt-dlp"]
-    : [path.join(bin, "yt-dlp"), "yt-dlp"];
+  const candidates =
+    process.platform === "win32"
+      ? [
+          path.join(bin, "yt-dlp.exe"),
+          path.join(bin, "yt-dlp"),
+          "yt-dlp.exe",
+          "yt-dlp",
+        ]
+      : [path.join(bin, "yt-dlp"), "yt-dlp"];
   for (const c of candidates) {
     try {
       if (!c.includes(path.sep)) return c; // PATH 후보는 바로 반환
@@ -124,14 +245,6 @@ function getYtDlpCommand(): string {
     } catch {}
   }
   return "yt-dlp";
-}
-
-function insertCookiesArg(args: string[], cookieFile: string): string[] {
-  const out = [...args];
-  // '--dump-json' 앞에 넣을 필요는 없지만, 가독성을 위해 앞쪽에 배치
-  const insertAt = Math.max(0, out.indexOf("--dump-json"));
-  out.splice(insertAt, 0, "--cookies", cookieFile);
-  return out;
 }
 
 async function runAndCollectJson(cmd: string, args: string[]): Promise<any> {
@@ -162,8 +275,8 @@ async function runAndCollectJson(cmd: string, args: string[]): Promise<any> {
       error: serializeError(e),
       stdout_sample: stdout.slice(0, 800),
     });
-    throw new Error(`Failed to parse yt-dlp JSON: ${String((e as any)?.message || e)}`);
+    throw new Error(
+      `Failed to parse yt-dlp JSON: ${String((e as any)?.message || e)}`
+    );
   }
 }
-
-
