@@ -175,7 +175,7 @@ export async function resolveTrack(input: string): Promise<ResolvedTrack> {
   let json: any;
   let lastErr: unknown;
   try {
-    for (const a of attempts) {
+    for (const [attemptIndex, a] of attempts.entries()) {
       const args = buildArgs(a);
       const extractorArgsCombined = (() => {
         const idx = args.indexOf("--extractor-args");
@@ -195,8 +195,27 @@ export async function resolveTrack(input: string): Promise<ResolvedTrack> {
       });
       try {
         json = await runAndCollectJson(cmd, args);
+        logger.info("music.ytdlp.attempt.success", {
+          attempt_index: attemptIndex,
+          client: a.client,
+          format: a.format,
+          used_cookies: a.cookieArgs.length > 0 ? true : undefined,
+          cookie_source_path:
+            a.cookieArgs.length > 0 ? cookieSpec.sourcePath : undefined,
+          extractor_args: extractorArgsCombined,
+        });
         break;
       } catch (e) {
+        logger.warn("music.ytdlp.attempt.failed", {
+          attempt_index: attemptIndex,
+          client: a.client,
+          format: a.format,
+          used_cookies: a.cookieArgs.length > 0 ? true : undefined,
+          cookie_source_path:
+            a.cookieArgs.length > 0 ? cookieSpec.sourcePath : undefined,
+          extractor_args: extractorArgsCombined,
+          error: serializeError(e),
+        });
         lastErr = e;
         continue;
       }
