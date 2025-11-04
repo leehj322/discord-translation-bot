@@ -157,7 +157,7 @@ async function getOrCreateState(
     logger.error("music.player.error", serializeError(e));
   });
   player.on("stateChange", (oldState, newState) => {
-    logger.debug("music.player.state_change", {
+    logger.info("music.player.state_change", {
       guildId: guild.id,
       oldStatus: oldState.status,
       newStatus: newState.status,
@@ -264,7 +264,7 @@ async function playNext(guildId: string): Promise<void> {
       "2",
     ],
   });
-  logger.debug("music.ffmpeg.spawned", {
+  logger.info("music.ffmpeg.spawned", {
     guildId,
     input: inputForFfmpeg,
     args: (ffmpeg as any)?.commandArgs,
@@ -275,7 +275,7 @@ async function playNext(guildId: string): Promise<void> {
   (ffmpeg as any)?.process?.once?.(
     "close",
     (code: number | null, signal: string | null) => {
-      logger.debug("music.ffmpeg.process_close", {
+      logger.info("music.ffmpeg.process_close", {
         guildId,
         code,
         signal,
@@ -283,7 +283,7 @@ async function playNext(guildId: string): Promise<void> {
     }
   );
   ffmpeg.once("end", () => {
-    logger.debug("music.ffmpeg.end", { guildId });
+    logger.info("music.ffmpeg.end", { guildId });
   });
 
   const opus = new prism.opus.Encoder({
@@ -299,7 +299,7 @@ async function playNext(guildId: string): Promise<void> {
     logger.error("music.stream.error", serializeError(e));
   });
   stream.once("end", () => {
-    logger.debug("music.stream.end", { guildId });
+    logger.info("music.stream.end", { guildId });
   });
 
   const resource = createAudioResource(stream, { inputType: StreamType.Opus });
