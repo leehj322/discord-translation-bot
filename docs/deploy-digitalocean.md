@@ -94,7 +94,7 @@ YouTube 쿠키가 필요한 경우 GitHub Secret에 Base64로 저장해 워크�
 
 - `actions/setup-node`로 Node.js 20 환경 준비 후 `npm ci`, `npm run build` 실행
 - `ssh-deploy` 액션으로 `/opt/discord-bot` 경로에 파일 동기화
-- SSH 키와 `known_hosts` 준비 후 `.env` 갱신, 쿠키 파일 디코딩 (`YTDLP_COOKIES_BASE64` 사용 시)
+- SSH 키와 `known_hosts` 준비 후 `.env` 갱신(`YTDLP_COOKIES_PATH=/etc/secrets/cookies.txt` 포함), 쿠키 파일 디코딩 (`YTDLP_COOKIES_BASE64` 사용 시)
 - 리모트에서 `npm ci --omit=dev` 실행 후 `pm2`로 봇 재시작
 
 세부 설정은 저장소의 `.github/workflows/deploy.yml`을 참고하세요.

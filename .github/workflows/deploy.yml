@@ -56,6 +56,7 @@ jobs:
             DEEPL_AUTH_KEY=${{ secrets.DEEPL_AUTH_KEY }}
             SUPABASE_URL=${{ secrets.SUPABASE_URL }}
             SUPABASE_SERVICE_ROLE=${{ secrets.SUPABASE_SERVICE_ROLE }}
+            YTDLP_COOKIES_PATH=/etc/secrets/cookies.txt
         run: |
           printf '%s\n' "$ENV_CONTENT" | ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ secrets.DO_USER }}@${{ secrets.DO_HOST }} "mkdir -p /opt/discord-bot && cat > /opt/discord-bot/.env"
 
