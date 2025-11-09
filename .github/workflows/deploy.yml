@@ -71,7 +71,6 @@ jobs:
           cd /opt/discord-bot
           mkdir -p bin
           npm ci --omit=dev
-          npm run build
           pm2 start dist/bot.js --name discord-bot || pm2 restart discord-bot
           pm2 save
           EOF

@@ -88,98 +88,16 @@ GitHub 저장소 설정 → **Secrets and variables → Actions**에서 아래 �
 
 YouTube 쿠키가 필요한 경우 GitHub Secret에 Base64로 저장해 워크플로우에서 디코딩합니다.
 
-## 5. GitHub Actions 워크플로우 추가 및 실행 흐름
+## 5. GitHub Actions 워크플로우 개요
 
-`.github/workflows/deploy.yml` 파일을 생성하고 아래 내용을 그대로 사용합니다. 주요 단계는 다음과 같습니다.
+자동 배포는 `.github/workflows/deploy.yml` 파일에서 관리합니다. 핵심 단계만 정리하면 다음과 같습니다.
 
-1. 코드를 체크아웃하고 Node.js 20 환경을 준비합니다.
-2. `npm ci`와 `npm run build`로 프로젝트를 빌드합니다. (`prebuild` 스크립트가 자동으로 `npm run setup:bin`을 호출)
-3. `easingthemes/ssh-deploy` 액션으로 Droplet에 코드를 동기화합니다.
-4. GitHub Secrets 값을 기반으로 Droplet의 `.env` 파일을 갱신합니다.
-5. Droplet에서 `npm ci --omit=dev`와 `pm2` 재시작을 실행합니다.
+- `actions/setup-node`로 Node.js 20 환경 준비 후 `npm ci`, `npm run build` 실행
+- `ssh-deploy` 액션으로 `/opt/discord-bot` 경로에 파일 동기화
+- SSH 키와 `known_hosts` 준비 후 `.env` 갱신, 쿠키 파일 디코딩 (`YTDLP_COOKIES_BASE64` 사용 시)
+- 리모트에서 `npm ci --omit=dev` 실행 후 `pm2`로 봇 재시작
 
-```yaml
-name: Deploy to DigitalOcean
-
-on:
-  push:
-    branches:
-      - main
-  workflow_dispatch:
-
-concurrency:
-  group: deploy-to-digitalocean
-  cancel-in-progress: true
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build project
-        run: npm run build
-
-      - name: Prepare SSH key
-        run: |
-          install -d -m 700 ~/.ssh
-          printf '%s\n' "${{ secrets.DO_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -p 22 ${{ secrets.DO_HOST }} >> ~/.ssh/known_hosts
-
-      - name: Sync project to Droplet
-        uses: easingthemes/ssh-deploy@v4
-        with:
-          SSH_PRIVATE_KEY: ${{ secrets.DO_PRIVATE_KEY }}
-          REMOTE_HOST: ${{ secrets.DO_HOST }}
-          REMOTE_USER: ${{ secrets.DO_USER }}
-          SOURCE: "."
-          TARGET: /opt/discord-bot
-          ARGS: "-rlgoDzvc -i --delete"
-          EXCLUDE: "/.git/, /.github/, /node_modules/, /.DS_Store"
-
-      - name: Update environment file
-        env:
-          ENV_CONTENT: |
-            DISCORD_TOKEN=${{ secrets.DISCORD_TOKEN }}
-            DISCORD_CLIENT_ID=${{ secrets.DISCORD_CLIENT_ID }}
-            DEEPL_AUTH_KEY=${{ secrets.DEEPL_AUTH_KEY }}
-            SUPABASE_URL=${{ secrets.SUPABASE_URL }}
-            SUPABASE_SERVICE_ROLE=${{ secrets.SUPABASE_SERVICE_ROLE }}
-        run: |
-          printf '%s\n' "$ENV_CONTENT" | ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ secrets.DO_USER }}@${{ secrets.DO_HOST }} "mkdir -p /opt/discord-bot && cat > /opt/discord-bot/.env"
-
-      - name: Sync cookies file
-        if: secrets.YTDLP_COOKIES_BASE64 != ''
-        run: |
-          printf '%s' "${{ secrets.YTDLP_COOKIES_BASE64 }}" | base64 -d | ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ secrets.DO_USER }}@${{ secrets.DO_HOST }} "cat > /etc/secrets/cookies.txt"
-          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ secrets.DO_USER }}@${{ secrets.DO_HOST }} "chmod 600 /etc/secrets/cookies.txt"
-
-      - name: Install production dependencies and restart bot
-        run: |
-          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ secrets.DO_USER }}@${{ secrets.DO_HOST }} <<'EOF'
-          set -euo pipefail
-          cd /opt/discord-bot
-          mkdir -p bin
-          npm ci --omit=dev
-          npm run build
-          pm2 start dist/bot.js --name discord-bot || pm2 restart discord-bot
-          pm2 save
-          EOF
-```
-
-> `npm run build` 실행 시 `prebuild` 훅이 `npm run setup:bin`을 호출해 ffmpeg 등 필요한 바이너리를 `bin/`에 내려받습니다.
+세부 설정은 저장소의 `.github/workflows/deploy.yml`을 참고하세요.
 
 ## 6. 쿠키 파일 처리 (GitHub Secrets 기반)
 
