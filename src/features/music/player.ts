@@ -242,6 +242,11 @@ async function playNext(guildId: string): Promise<void> {
     logger.error("music.play.missing_source", { title: next.title });
     return;
   }
+  logger.info("music.ffmpeg.path", {
+    guildId,
+    env_path: process.env.FFMPEG_PATH,
+    static_path: ffmpegPath,
+  });
   const ffmpeg = new prism.FFmpeg({
     args: [
       "-reconnect",
