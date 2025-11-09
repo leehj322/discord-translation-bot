@@ -1,0 +1,70 @@
+name: Deploy to DigitalOcean
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-to-digitalocean
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build project
+        run: npm run build
+
+      - name: Sync project to Droplet
+        uses: easingthemes/ssh-deploy@v4
+        with:
+          SSH_PRIVATE_KEY: ${{ secrets.DO_PRIVATE_KEY }}
+          REMOTE_HOST: ${{ secrets.DO_HOST }}
+          REMOTE_USER: ${{ secrets.DO_USER }}
+          SOURCE: "."
+          TARGET: /opt/discord-bot
+          ARGS: "-rlgoDzvc -i --delete"
+          EXCLUDE: "/.git/, /.github/, /node_modules/, /.DS_Store"
+
+      - name: Update environment file
+        env:
+          ENV_CONTENT: |
+            DISCORD_TOKEN=${{ secrets.DISCORD_TOKEN }}
+            DISCORD_CLIENT_ID=${{ secrets.DISCORD_CLIENT_ID }}
+            DEEPL_AUTH_KEY=${{ secrets.DEEPL_AUTH_KEY }}
+            SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+            SUPABASE_SERVICE_ROLE=${{ secrets.SUPABASE_SERVICE_ROLE }}
+        run: |
+          printf '%s\n' "$ENV_CONTENT" | ssh -o StrictHostKeyChecking=no ${{ secrets.DO_USER }}@${{ secrets.DO_HOST }} "mkdir -p /opt/discord-bot && cat > /opt/discord-bot/.env"
+
+      - name: Sync cookies file
+        run: |
+          printf '%s' "${{ secrets.YTDLP_COOKIES_BASE64 }}" | base64 -d | ssh -o StrictHostKeyChecking=no ${{ secrets.DO_USER }}@${{ secrets.DO_HOST }} "cat > /etc/secrets/cookies.txt"
+          ssh -o StrictHostKeyChecking=no ${{ secrets.DO_USER }}@${{ secrets.DO_HOST }} "chmod 600 /etc/secrets/cookies.txt"
+
+      - name: Install production dependencies and restart bot
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.DO_USER }}@${{ secrets.DO_HOST }} <<'EOF'
+          set -euo pipefail
+          cd /opt/discord-bot
+          mkdir -p bin
+          npm ci --omit=dev
+          npm run build
+          pm2 start dist/bot.js --name discord-bot || pm2 restart discord-bot
+          pm2 save
+          EOF
