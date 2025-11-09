@@ -17,8 +17,8 @@ import ffmpegPath from "ffmpeg-static";
 import { resolveTrack, ResolvedTrack } from "./ytdlp.js";
 import { logger, serializeError } from "../../core/logger.js";
 
-// ffmpeg-static 경로를 prism FFmpeg가 사용하도록 설정
-if (ffmpegPath) {
+// ffmpeg-static 경로를 prism FFmpeg가 사용하도록 설정하되, 환경변수가 우선
+if (!process.env.FFMPEG_PATH && ffmpegPath) {
   process.env.FFMPEG_PATH = ffmpegPath;
 }
 
