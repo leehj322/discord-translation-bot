@@ -30,6 +30,13 @@ jobs:
       - name: Build project
         run: npm run build
 
+      - name: Prepare SSH key
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "${{ secrets.DO_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -p 22 ${{ secrets.DO_HOST }} >> ~/.ssh/known_hosts
+
       - name: Sync project to Droplet
         uses: easingthemes/ssh-deploy@v4
         with:
@@ -50,16 +57,16 @@ jobs:
             SUPABASE_URL=${{ secrets.SUPABASE_URL }}
             SUPABASE_SERVICE_ROLE=${{ secrets.SUPABASE_SERVICE_ROLE }}
         run: |
-          printf '%s\n' "$ENV_CONTENT" | ssh -o StrictHostKeyChecking=no ${{ secrets.DO_USER }}@${{ secrets.DO_HOST }} "mkdir -p /opt/discord-bot && cat > /opt/discord-bot/.env"
+          printf '%s\n' "$ENV_CONTENT" | ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ secrets.DO_USER }}@${{ secrets.DO_HOST }} "mkdir -p /opt/discord-bot && cat > /opt/discord-bot/.env"
 
       - name: Sync cookies file
         run: |
-          printf '%s' "${{ secrets.YTDLP_COOKIES_BASE64 }}" | base64 -d | ssh -o StrictHostKeyChecking=no ${{ secrets.DO_USER }}@${{ secrets.DO_HOST }} "cat > /etc/secrets/cookies.txt"
-          ssh -o StrictHostKeyChecking=no ${{ secrets.DO_USER }}@${{ secrets.DO_HOST }} "chmod 600 /etc/secrets/cookies.txt"
+          printf '%s' "${{ secrets.YTDLP_COOKIES_BASE64 }}" | base64 -d | ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ secrets.DO_USER }}@${{ secrets.DO_HOST }} "cat > /etc/secrets/cookies.txt"
+          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ secrets.DO_USER }}@${{ secrets.DO_HOST }} "chmod 600 /etc/secrets/cookies.txt"
 
       - name: Install production dependencies and restart bot
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.DO_USER }}@${{ secrets.DO_HOST }} <<'EOF'
+          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ secrets.DO_USER }}@${{ secrets.DO_HOST }} <<'EOF'
           set -euo pipefail
           cd /opt/discord-bot
           mkdir -p bin
